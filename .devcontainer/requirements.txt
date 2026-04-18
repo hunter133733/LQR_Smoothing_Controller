@@ -1,0 +1,2 @@
+matplotlib ; python_version >= "3.10"
+casadi ; python_version >= "3.10"

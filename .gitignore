@@ -1,0 +1,53 @@
+# ROS / colcon build outputs
+build/
+install/
+log/
+devel/
+logs/
+build_isolated/
+devel_isolated/
+site/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Generated ROS message/service python files
+msg/_*.py
+srv/_*.py
+
+# Dynamic reconfigure generated files
+*.cfgc
+/cfg/cpp/
+/cfg/*.py
+
+# Editor / IDE
+.vscode/
+.idea/
+.project
+.cproject
+CMakeLists.txt.user
+qtcreator-*
+*.user
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Misc generated files
+*.log
+*.pcd
+frames*
+
+# Catkin leftover
+CATKIN_IGNORE
+
+# Packaging / environments
+*.egg-info/
+venv/
+.venv/
+env/

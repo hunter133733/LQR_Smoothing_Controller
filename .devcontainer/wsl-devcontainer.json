@@ -1,0 +1,54 @@
+// See https://aka.ms/vscode-remote/devcontainer.json for format details.
+//
+// NOTE: for Windows WSLg enabled systems only
+//       wslg: https://github.com/microsoft/wslg
+//
+{
+	"dockerFile": "Dockerfile",
+	"build": {
+		"args": {
+			"WORKSPACE": "${containerWorkspaceFolder}"
+		}
+	},
+	"remoteUser": "ros",
+	"runArgs": [
+		"--network=host",
+		"--cap-add=SYS_PTRACE",
+		"--security-opt=seccomp:unconfined",
+		"--security-opt=apparmor:unconfined",
+		"--ipc=host",
+                "--device=/dev/dxg"
+	],
+	"containerEnv": {
+		"DISPLAY": ":0",   // This sometimes set to (wrong) `:1` if read from `DISPLAY` envar
+		"WAYLAND_DISPLAY": "wayland-0",
+		"XDG_RUNTIME_DIR": "/mnt/wslg/runtime-dir",
+		"PULSE_SERVER": "/mnt/wslg/PulseServer",
+		"LIBGL_ALWAYS_SOFTWARE": "1" // Needed for software rendering of opengl
+	},
+	"mounts": [
+		"source=/mnt/wslg,target=/mnt/wslg,type=bind",
+		"source=/run/desktop/mnt/host/wslg/.X11-unix,target=/tmp/.X11-unix,type=bind"
+	],
+	// Set *default* container specific settings.json values on container create.
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"althack.ament-task-provider",
+				"betwo.b2-catkin-tools",
+				"DotJoshJohnson.xml",
+				"ms-azuretools.vscode-docker",
+				"ms-iot.vscode-ros",
+				"ms-python.python",
+				"ms-vscode.cpptools",
+				"redhat.vscode-yaml",
+				"smilerobotics.urdf",
+				"streetsidesoftware.code-spell-checker",
+				"twxs.cmake",
+				"yzhang.markdown-all-in-one",
+				"zachflower.uncrustify"
+			]
+		}
+	},
+	"postCreateCommand": "bash -i setup/setup.sh --no_import"
+}
