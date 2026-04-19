@@ -19,8 +19,8 @@
     lqr.w_max: 1.0
 
     reference.kind: to_goal
-    reference.n_steps: 100
+    reference.n_steps: 250
 
-    goal_x: -1.0
-    goal_y: 3.5
-    goal_theta: 0.0
+    goal_x: -1.2
+    goal_y: 4.8
+    goal_theta: 0.6
