@@ -4,7 +4,6 @@
     pose_topic: /robot_pose
     cmd_vel_topic: /cmd_vel
     nom_traj_topic: /traj
-    
     control_rate: 5.0
     dt: 0.2
 
@@ -20,8 +19,8 @@
     lqr.w_max: 1.0
 
     reference.kind: to_goal
-    reference.n_steps: 500
+    reference.n_steps: 100
 
-    goal_x: -1.2
-    goal_y: 3.8
+    goal_x: -1.0
+    goal_y: 3.5
     goal_theta: 0.0
