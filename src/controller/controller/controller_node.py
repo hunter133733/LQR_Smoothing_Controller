@@ -1,5 +1,9 @@
 """ROS2 planner frontend for LQR backend controllers."""
 
+import csv
+import os
+import time
+
 import importlib
 import math
 from typing import Any, Dict, Tuple
@@ -116,6 +120,18 @@ class ControllerNode(Node):
             cmd_vel_topic,
             10,
         )
+
+        #CSV Logging
+        self._log_dir = os.path.join(os.getcwd(), "results", "metrics")
+        os.makedirs(self._log_dir, exist_ok=True)
+
+        self._log_path = os.path.join(self._log_dir, "current_run.csv")
+        self._log_file = open(self._log_path, "w", newline="")
+        self._csv_writer = csv.writer(self._log_file)
+        self._csv_writer.writerow(["t", "x", "y", "yaw", "v_cmd", "w_cmd"])
+        self._t0 = time.time()
+
+
         # STUDENT CODE END
 
         self.get_logger().info(f"LQRPlanner up. rate={rate_hz:.1f}Hz")
@@ -197,7 +213,9 @@ class ControllerNode(Node):
         # TODO: Save latest state in self._latest_state in numpy format
         # STUDENT CODE START
         q = msg.pose.orientation
-        _, _, yaw = euler_from_quaternion(q.w, q.x, q.y, q.z)
+        _, _, yaw = euler_from_quaternion(
+            float(q.x), float(q.y), float(q.z), float(q.w)
+        )
 
         self._latest_state = np.array(
             [
@@ -243,6 +261,22 @@ class ControllerNode(Node):
         cmd.linear.x = float(u[0])
         cmd.angular.z = float(u[1])
         self._cmd_pub.publish(cmd)
+
+        #csv logging
+        if self._latest_state is not None:
+            t_now = time.time() - self._t0
+            self._csv_writer.writerow(
+                [
+                    float(t_now),
+                    float(self._latest_state[0]),
+                    float(self._latest_state[1]),
+                    float(self._latest_state[2]),
+                    float(u[0]),
+                    float(u[1]),
+                ]
+            )
+            self._log_file.flush()
+
         # STUDENT CODE END
 
         if Z is not None:

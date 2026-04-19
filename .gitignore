@@ -51,3 +51,5 @@ CATKIN_IGNORE
 venv/
 .venv/
 env/
+
+py/optimized_dp/

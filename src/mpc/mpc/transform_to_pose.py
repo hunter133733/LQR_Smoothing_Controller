@@ -31,7 +31,7 @@ class TransformToPose(Node):
         self.declare_parameter("update_rate", 60.0)
         self.declare_parameter("source_frame_id", "base_link")
         self.declare_parameter("target_frame_id", "map")
-        self.declare_parameter("pose_topic", "/pose_topic")
+        self.declare_parameter("pose_topic", "/robot_pose")
 
         self.update_rate = (
             self.get_parameter("update_rate").get_parameter_value().double_value
