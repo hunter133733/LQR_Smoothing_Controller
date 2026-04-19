@@ -238,7 +238,8 @@ class ControllerNode(Node):
         return
 
     def _on_timer(self) -> None:
-        if self._latest_state is None or self._latest_traj is None:
+        # Changed so LQR can use its built - in reference generator
+        if self._latest_state is None:
             return
 
         u = np.array([0.0, 0.0], dtype=float)
