@@ -57,6 +57,8 @@ class ControllerNode(Node):
         self.declare_parameter("lqr.theta_cost", 1.0)
         self.declare_parameter("lqr.v_cost", 0.3)
         self.declare_parameter("lqr.w_cost", 0.3)
+        self.declare_parameter("lqr.dv_cost", 0.05) # for analyzing smoothing 
+        self.declare_parameter("lqr.dw_cost", 0.10) # for analyzing smoothing 
         self.declare_parameter("lqr.v_min", -0.2)
         self.declare_parameter("lqr.v_max", 1.0)
         self.declare_parameter("lqr.w_min", -1.2)
