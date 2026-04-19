@@ -265,7 +265,10 @@ class LQRController(ControllerBackend):
         # Hint: extract a fixed-length reference window `self.sample_reference_window`, solve over that
         # window, return only the first action, then advance the step index.
         # STUDENT CODE START
-
+        if traj is not None:
+            self._z_ref = traj.states
+            self._u_ref = traj.actions
+            
         zRefWin, uRefWin = self.sample_reference_window(
             self._z_ref,
             self._u_ref,
