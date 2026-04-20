@@ -2,7 +2,8 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, OpaqueFunction, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -69,7 +70,14 @@ def launch_setup(context, *args, **kwargs):
         parameters=[
             {"use_sim_time": True},
             {"autostart": True},
-            {"node_names": ["map_server", "amcl"]},
+            {"node_names": [
+                "map_server", 
+                "amcl",
+                "controller_server",
+                "planner_server",
+                "behavior_server",
+                "bt_navigator",
+            ]},
         ],
     )
 
@@ -172,6 +180,17 @@ def launch_setup(context, *args, **kwargs):
         ],
     )
 
+    nav2_navigation = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(nav2_bringup_launch_dir, "navigation_launch.py")
+        ),
+        launch_arguments={
+            "use_sim_time": "true",
+            "params_file": nav2_params_file.perform(context),
+            "autostart": "false",  # lifecycle_manager above handles activation
+        }.items(),
+    )
+
     return [
         gazebo_server,
         gazebo_client,
@@ -180,6 +199,7 @@ def launch_setup(context, *args, **kwargs):
         map_server_node,
         lifecycle_manager_node,
         amcl_node,
+        nav2_navigation,
         rviz_node,
     ]
 
