@@ -18,6 +18,7 @@ class RobotPosePublisher(TransformToPose):
                 Parameter("source_frame_id", Parameter.Type.STRING, "base_link"),
                 Parameter("target_frame_id", Parameter.Type.STRING, "map"),
                 Parameter("pose_topic", Parameter.Type.STRING, "/robot_pose"),
+                Parameter("use_sim_time", Parameter.Type.BOOL, True),
             ]
         )
 

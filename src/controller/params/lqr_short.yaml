@@ -6,7 +6,9 @@
     nom_traj_topic: /traj
     control_rate: 5.0
     dt: 0.2
+    use_sim_time: true
 
+    # --- LQR Gains (identical across all 4 test configs) ---
     lqr.horizon: 20
     lqr.x_cost: 6.0
     lqr.y_cost: 6.0
@@ -18,9 +20,11 @@
     lqr.w_min: -1.0
     lqr.w_max: 1.0
 
+    # --- Reference (identical across all 4 test configs) ---
     reference.kind: to_goal
-    reference.n_steps: 250
+    reference.n_steps: 1000 # short path — fewer steps needed
 
-    goal_x: -1.3
-    goal_y: 4.5
-    goal_theta: 0.6
+    # --- Short path goal: ~3m straight ahead, slight turn ---
+    goal_x: 1.0
+    goal_y: 2.0
+    goal_theta: 0.0

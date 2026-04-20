@@ -14,13 +14,13 @@ def launch_setup(context, *args, **kwargs):
     controller_node = Node(
         package="controller",
         executable="controller",
-        parameters=[controller_params],
+        parameters=[controller_params, {"use_sim_time": True}],
     )
 
     pub_robot_pose_node = Node(
         package="mpc",
         executable="robot_pose_publisher",
-        parameters=[pose_params],
+        parameters=[pose_params, {"use_sim_time": True}],
     )
 
     return [controller_node, pub_robot_pose_node]

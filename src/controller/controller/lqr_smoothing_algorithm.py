@@ -17,7 +17,7 @@ DEFAULT_COST_COEFS = {
 }
 
 
-class LQRAlgorithm:
+class LQRSmoothingAlgorithm:  # lqr smoothing change
     """Finite-horizon time-varying LQR for Dubins trajectory tracking."""
 
     def __init__(
@@ -27,6 +27,10 @@ class LQRAlgorithm:
         n: int = 25,  # time horizon in number of steps to look ahead
         u_min: NDArray | None = None,
         u_max: NDArray | None = None,
+        smooth_alpha_v: float = 0.35,  # lqr smoothing change
+        smooth_alpha_w: float = 0.20,  # lqr smoothing change
+        max_dv: float = 0.15,  # lqr smoothing change
+        max_dw: float = 0.35,  # lqr smoothing change
     ):
         self.n = int(max(1, n))
         self.dt = float(dt)
@@ -71,13 +75,44 @@ class LQRAlgorithm:
         self.u_sol: NDArray | None = None
         self.tau_sol: NDArray | None = None
 
+        self.smooth_alpha_v = float(np.clip(smooth_alpha_v, 0.0, 1.0))  # lqr smoothing change
+        self.smooth_alpha_w = float(np.clip(smooth_alpha_w, 0.0, 1.0))  # lqr smoothing change
+        self.max_dv = float(max_dv)  # lqr smoothing change
+        self.max_dw = float(max_dw)  # lqr smoothing change
+        self.prev_u = np.zeros(2, dtype=float)  # lqr smoothing change
+
     def __str__(self):
         ret = "\n## LQRAlgorithm\n"
         ret += f"- dt: {self.dt}\n"
         ret += f"- n: {self.n}\n"
         ret += f"- dynamics: {self.dynsys.__class__.__name__}\n"
         ret += f"- costs: {self.cost_coefs}\n"
+        ret += f"- smooth_alpha_v: {self.smooth_alpha_v}\n"  # lqr smoothing change
+        ret += f"- smooth_alpha_w: {self.smooth_alpha_w}\n"  # lqr smoothing change
+        ret += f"- max_dv: {self.max_dv}\n"  # lqr smoothing change
+        ret += f"- max_dw: {self.max_dw}\n"  # lqr smoothing change
         return ret
+
+    def _smooth_control(self, u_raw: NDArray) -> NDArray:  # lqr smoothing change
+        u_raw = np.asarray(u_raw, dtype=float).reshape(2)  # lqr smoothing change
+
+        dv = np.clip(u_raw[0] - self.prev_u[0], -self.max_dv, self.max_dv)  # lqr smoothing change
+        dw = np.clip(u_raw[1] - self.prev_u[1], -self.max_dw, self.max_dw)  # lqr smoothing change
+        u_rate_limited = np.array(  # lqr smoothing change
+            [self.prev_u[0] + dv, self.prev_u[1] + dw], dtype=float  # lqr smoothing change
+        )  # lqr smoothing change
+
+        u_smoothed = np.array(  # lqr smoothing change
+            [  # lqr smoothing change
+                self.smooth_alpha_v * u_rate_limited[0] + (1.0 - self.smooth_alpha_v) * self.prev_u[0],  # lqr smoothing change
+                self.smooth_alpha_w * u_rate_limited[1] + (1.0 - self.smooth_alpha_w) * self.prev_u[1],  # lqr smoothing change
+            ],  # lqr smoothing change
+            dtype=float,  # lqr smoothing change
+        )  # lqr smoothing change
+
+        u_smoothed = np.clip(u_smoothed, self.action_min, self.action_max)  # lqr smoothing change
+        self.prev_u = u_smoothed.copy()  # lqr smoothing change
+        return u_smoothed  # lqr smoothing change
 
     def solve(
         self,
@@ -124,6 +159,9 @@ class LQRAlgorithm:
             deltaZ[2] = np.arctan2(np.sin(deltaZ[2]), np.cos(deltaZ[2]))
             u_t = u_track[i, :] - Ks[i] @ deltaZ
             u_t = np.clip(u_t, self.action_min, self.action_max)
+            # NOTE: _smooth_control is NOT called here — applying it inside the
+            # planning rollout corrupts prev_u with simulated steps, causing the
+            # robot to stall. Smoothing is applied only to the real command in get_action().
             
             # STUDENT CODE END
 
@@ -201,11 +239,12 @@ class LQRAlgorithm:
         return As, Bs
 
 
-class LQRController(ControllerBackend):
+class LQRSmoothingController(ControllerBackend):  # lqr smoothing change
     """Thin wrapper used by ROS2 frontend."""
 
     def __init__(self, config):
         cfg = dict(config.get("lqr", {}))
+        smooth_cfg = dict(config.get("lqr_smooth", {}))  # lqr smoothing change
         dt = float(config.get("dt", 0.1))
         horizon = int(cfg.get("horizon", 25))
         cost_coefs = {
@@ -222,12 +261,16 @@ class LQRController(ControllerBackend):
             [float(cfg.get("v_max", 1.0)), float(cfg.get("w_max", 1.2))], dtype=float
         )
 
-        self._algo = LQRAlgorithm(
+        self._algo = LQRSmoothingAlgorithm(  # lqr smoothing change
             cost_coefs=cost_coefs,
             dt=dt,
             n=horizon,
             u_min=u_min,
             u_max=u_max,
+            smooth_alpha_v=float(smooth_cfg.get("alpha_v", 0.35)),  # lqr smoothing change
+            smooth_alpha_w=float(smooth_cfg.get("alpha_w", 0.20)),  # lqr smoothing change
+            max_dv=float(smooth_cfg.get("max_dv", 0.15)),  # lqr smoothing change
+            max_dw=float(smooth_cfg.get("max_dw", 0.35)),  # lqr smoothing change
         )
         ref_cfg = dict(config.get("reference", {}))
         self._ref_kind = str(ref_cfg.get("kind", "to_goal"))
@@ -257,8 +300,8 @@ class LQRController(ControllerBackend):
         diff = pts - obs[:2]
         dist2 = np.sum(diff * diff, axis=1)
 
-        return start + int(np.argmin(dist2))   
-
+        return start + int(np.argmin(dist2))
+    
     def get_action(
         self, observation: NDArray, traj: StateActionTrajectory = None
     ) -> NDArray:
@@ -306,15 +349,20 @@ class LQRController(ControllerBackend):
             u_ref=uRefWin
         )
 
-        action = u_sol[0, :]
-        self._step = ref_idx + 1
-        # STUDENT CODE END
+        # Apply smoothing only to the real command sent to the robot,
+        # not inside the planning rollout.
+        action = self._algo._smooth_control(u_sol[0, :])
+
         goal_err = np.linalg.norm(obs[:2] - self._goal[:2])
         yaw_err = obs[2] - self._goal[2]
         yaw_err = np.arctan2(np.sin(yaw_err), np.cos(yaw_err))
 
         if goal_err < 0.10 and abs(yaw_err) < 0.10:
             action = np.zeros(2, dtype=float)
+
+        self._step = ref_idx + 1
+        # STUDENT CODE END
+
         return np.clip(action, self._u_min, self._u_max), z_sol, u_sol
 
     @staticmethod

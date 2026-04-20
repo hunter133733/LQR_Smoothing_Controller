@@ -11,16 +11,16 @@
     lqr.x_cost: 6.0
     lqr.y_cost: 6.0
     lqr.theta_cost: 2.0
-    lqr.v_cost: 0.25
-    lqr.w_cost: 0.30
+    lqr.v_cost: 0.35
+    lqr.w_cost: 0.45
     lqr.v_min: -0.2
-    lqr.v_max: 0.5
-    lqr.w_min: -1.0
-    lqr.w_max: 1.0
+    lqr.v_max: 0.4
+    lqr.w_min: -0.8
+    lqr.w_max: 0.8
 
     reference.kind: s_curve
-    reference.n_steps: 250
+    reference.n_steps: 60
 
     goal_x: -1.2
-    goal_y: 3.8
-    goal_theta: 0.0
+    goal_y: -4.2
+    goal_theta: 0.3

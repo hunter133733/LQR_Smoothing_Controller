@@ -1,6 +1,6 @@
 /controller_node:
   ros__parameters:
-    backend_class: controller.lqr_algorithm:LQRController
+    backend_class: controller.lqr_smoothing_algorithm:LQRSmoothingController
     pose_topic: /robot_pose
     cmd_vel_topic: /cmd_vel
     nom_traj_topic: /traj
@@ -18,9 +18,14 @@
     lqr.w_min: -1.0
     lqr.w_max: 1.0
 
-    reference.kind: to_goal
-    reference.n_steps: 250
+    lqr_smooth.alpha_v: 0.35
+    lqr_smooth.alpha_w: 0.20
+    lqr_smooth.max_dv: 0.15
+    lqr_smooth.max_dw: 0.35
 
-    goal_x: -1.3
-    goal_y: 4.5
-    goal_theta: 0.6
+    reference.kind: to_goal
+    reference.n_steps: 150
+
+    goal_x: -1.5
+    goal_y: 3.5
+    goal_theta: 0.0
