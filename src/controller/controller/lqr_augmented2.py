@@ -17,30 +17,42 @@ DEFAULT_COST_COEFS = {
 }
 
 
-class LQRAlgorithm:
-    """Finite-horizon time-varying LQR for Dubins trajectory tracking."""
+class LQRSmoothingAlgorithm:
+    """Finite-horizon time-varying LQR with lecture-style input-rate penalty.
+
+    Augmented state:
+        x_aug = [x, y, theta, v_prev, w_prev]
+
+    New control variable:
+        du = u_k - u_{k-1}
+
+    This lets us penalize command-rate changes inside the optimization instead of
+    smoothing the final command after solving plain LQR.
+    """
 
     def __init__(
         self,
         cost_coefs: Dict | None = None,
-        dt: float = 0.1,  # time discretization
-        n: int = 25,  # time horizon in number of steps to look ahead
+        dt: float = 0.1,
+        n: int = 25,
         u_min: NDArray | None = None,
         u_max: NDArray | None = None,
+        du_costs: Dict | None = None,
     ):
         self.n = int(max(1, n))
         self.dt = float(dt)
         self.cost_coefs = dict(DEFAULT_COST_COEFS if cost_coefs is None else cost_coefs)
 
-        self.L = np.diag(
+        self.Qx = np.diag(
             [self.cost_coefs["x"], self.cost_coefs["y"], self.cost_coefs["theta"]]
         ).astype(float)
-        self.Q = np.diag(
-            [self.cost_coefs["x"], self.cost_coefs["y"], self.cost_coefs["theta"]]
-        ).astype(float)
-        self.R = np.diag([self.cost_coefs["v"], self.cost_coefs["w"]]).astype(float)
+        self.Lx = self.Qx.copy()
+        self.Ru = np.diag([self.cost_coefs["v"], self.cost_coefs["w"]]).astype(float)
 
-        # speed and turn rate
+        if du_costs is None:
+            du_costs = {"dv": 1.0, "dw": 1.0}
+        self.Rdu = np.diag([float(du_costs["dv"]), float(du_costs["dw"])]).astype(float)
+
         u_min_arr = (
             np.array([-0.2, -1.2], dtype=float)
             if u_min is None
@@ -66,17 +78,33 @@ class LQRAlgorithm:
         self.action_min = u_min_arr
         self.action_max = u_max_arr
 
-        # Solution trajectory
+        self.Q_aug = np.block(
+            [
+                [self.Qx, np.zeros((3, 2), dtype=float)],
+                [np.zeros((2, 3), dtype=float), self.Ru],
+            ]
+        )
+        self.L_aug = np.block(
+            [
+                [self.Lx, np.zeros((3, 2), dtype=float)],
+                [np.zeros((2, 3), dtype=float), self.Ru],
+            ]
+        )
+
         self.z_sol: NDArray | None = None
         self.u_sol: NDArray | None = None
         self.tau_sol: NDArray | None = None
 
+        # Real previously applied control.
+        self.prev_u = np.zeros(2, dtype=float)
+
     def __str__(self):
-        ret = "\n## LQRAlgorithm\n"
+        ret = "\n## LQRSmoothingAlgorithm\n"
         ret += f"- dt: {self.dt}\n"
         ret += f"- n: {self.n}\n"
         ret += f"- dynamics: {self.dynsys.__class__.__name__}\n"
         ret += f"- costs: {self.cost_coefs}\n"
+        ret += f"- du_costs: diag({np.diag(self.Rdu)})\n"
         return ret
 
     def solve(
@@ -85,14 +113,15 @@ class LQRAlgorithm:
         t_0: float,
         z_ref: NDArray,
         u_ref: NDArray,
+        u_prev_0: NDArray,
+        u_prev_ref_0: NDArray,
     ) -> Tuple[NDArray, NDArray, NDArray]:
-        """
-        Returns sequence of controls and states obtained from time-varying LQR
-        for following a state and control trajectory
-        """
+        """Solve augmented LQR tracking with delta-u as the control variable."""
         z_ref = np.asarray(z_ref, dtype=float)
         u_ref = np.asarray(u_ref, dtype=float)
         z_0 = np.asarray(z_0, dtype=float).reshape(3)
+        u_prev_0 = np.asarray(u_prev_0, dtype=float).reshape(2)
+        u_prev_ref_0 = np.asarray(u_prev_ref_0, dtype=float).reshape(2)
         t_0 = float(t_0)
 
         if z_ref.ndim != 2 or z_ref.shape[1] != 3:
@@ -102,95 +131,85 @@ class LQRAlgorithm:
         if z_ref.shape[0] < 2 or u_ref.shape[0] < 1:
             raise ValueError("reference trajectories are too short")
 
-        # Track the first up to n steps of the reference trajectory
         n_track = int(min(self.n, z_ref.shape[0], u_ref.shape[0]))
         z_track = z_ref[:n_track, :]
         u_track = u_ref[:n_track, :]
 
-        # Solve LQR
         As, Bs = self.linearize_along_traj(z_track, u_track)
-        Ks, _ = self.compute_gains(As, Bs)
+        A_aug, B_aug = self.build_augmented_dynamics(As, Bs)
+        Ks, _ = self.compute_gains(A_aug, B_aug)
 
-        # Compute controls
+        u_prev_ref = np.zeros((n_track, 2), dtype=float)
+        du_ref = np.zeros((n_track, 2), dtype=float)
+        u_prev_ref[0, :] = u_prev_ref_0
+        du_ref[0, :] = u_track[0, :] - u_prev_ref[0, :]
+        for i in range(1, n_track):
+            u_prev_ref[i, :] = u_track[i - 1, :]
+            du_ref[i, :] = u_track[i, :] - u_prev_ref[i, :]
+
         self.dynsys.reset(z_0)
+        z_pred = np.zeros((n_track, 3), dtype=float)
+        u_pred = np.zeros((n_track, 2), dtype=float)
+
+        z_now = z_0.copy()
+        u_prev_now = u_prev_0.copy()
+
         for i in range(n_track):
-            u_t = np.zeros_like(u_track[0, :])
+            x_aug_now = np.concatenate([z_now, u_prev_now])
+            x_aug_ref = np.concatenate([z_track[i, :], u_prev_ref[i, :]])
 
-            # TODO: Compute state deviation, and then the saturated tracking control
-            # STUDENT CODE START
+            delta_aug = x_aug_now - x_aug_ref
+            delta_aug[2] = np.arctan2(np.sin(delta_aug[2]), np.cos(delta_aug[2]))
 
-            zT = self.dynsys.z_hist[-1, :]
-            deltaZ = zT - z_track[i, :]
-            deltaZ[2] = np.arctan2(np.sin(deltaZ[2]), np.cos(deltaZ[2]))
-            u_t = u_track[i, :] - Ks[i] @ deltaZ
+            du_t = du_ref[i, :] - Ks[i] @ delta_aug
+            u_t = u_prev_now + du_t
             u_t = np.clip(u_t, self.action_min, self.action_max)
-            
-            # STUDENT CODE END
 
             self.dynsys.forward_np(dt=self.dt, ctrl=u_t)
+            z_now = self.dynsys.z_hist[-1, :]
+            u_prev_now = u_t.copy()
 
-        self.z_sol = self.dynsys.z_hist[1:, :]
-        self.u_sol = self.dynsys.u_hist
+            z_pred[i, :] = z_now
+            u_pred[i, :] = u_t
+
+        self.z_sol = z_pred
+        self.u_sol = u_pred
         self.tau_sol = t_0 + np.linspace(self.dt, self.dt * n_track, n_track)
-
         return self.z_sol, self.u_sol, self.tau_sol
 
     def compute_gains(self, As: NDArray, Bs: NDArray) -> Tuple[NDArray, NDArray]:
-        """
-        Compute finite-horizon time-varying LQR gains.
-
-        Inputs:
-            As:   As[i] is the A matrix at time step i
-            Bs:   Bs[i] is the B matrix at time step i
-
-        Outputs:
-            Ks: Feedback control matrices from times 0 to n-1
-                Optimal control is given by u[i,:] = -Ks[i]*z_t
-            Ps: Cost-to-go matrices from times 0 to n
-        """
+        """Finite-horizon LQR gains for the augmented system."""
         As = np.asarray(As, dtype=float)
         Bs = np.asarray(Bs, dtype=float)
         if As.shape[0] != Bs.shape[0]:
             raise ValueError("As and Bs must have same horizon length")
 
-        # Initialize list of K and P matrices
         n = As.shape[0]
-        Ks = np.zeros((n, 2, 3), dtype=float)
-        Ps = np.zeros((n + 1, 3, 3), dtype=float)
+        Ks = np.zeros((n, 2, 5), dtype=float)
+        Ps = np.zeros((n + 1, 5, 5), dtype=float)
 
-        # TODO: Compute sequence of K and P matrices
-        # Hint: start from P_{i+1}, compute K_i from the discrete-time
-        # Riccati formula, then update P_i.
-        # STUDENT CODE START
-        Ps[n] = self.L
+        Ps[n] = self.L_aug
 
-        for i in range(n-1, -1, -1):
+        for i in range(n - 1, -1, -1):
             At = As[i]
             Bt = Bs[i]
-            Pnext = Ps[i+1]
+            Pnext = Ps[i + 1]
 
-            S = self.R + Bt.T @ Pnext @ Bt
+            S = self.Rdu + Bt.T @ Pnext @ Bt
             Ks[i] = np.linalg.inv(S) @ (Bt.T @ Pnext @ At)
-
-            Ps[i] = (
-                self.Q + (At.T @ Pnext @ At) - (At.T @ Pnext @ Bt @ Ks[i])
-            )
-
-
-        # STUDENT CODE END
+            Ps[i] = self.Q_aug + (At.T @ Pnext @ At) - (At.T @ Pnext @ Bt @ Ks[i])
 
         return Ks, Ps
 
     def linearize_along_traj(
         self, z_traj: NDArray, u_traj: NDArray
     ) -> Tuple[NDArray, NDArray]:
-        """Linearize system along a trajectory segment."""
+        """Linearize original Dubins system along the reference trajectory."""
         z_traj = np.asarray(z_traj, dtype=float)
         u_traj = np.asarray(u_traj, dtype=float)
         if z_traj.shape[0] != u_traj.shape[0]:
             raise ValueError("z_traj and u_traj must have same number of rows")
 
-        # Linearizations
         n = int(min(self.n, z_traj.shape[0]))
         As = np.zeros((n, 3, 3), dtype=float)
         Bs = np.zeros((n, 3, 2), dtype=float)
@@ -200,12 +219,33 @@ class LQRAlgorithm:
             )
         return As, Bs
 
+    @staticmethod
+    def build_augmented_dynamics(
+        As: NDArray,
+        Bs: NDArray,
+    ) -> Tuple[NDArray, NDArray]:
+        """Build lecture-style augmented dynamics with du as the new control."""
+        n = As.shape[0]
+        A_aug = np.zeros((n, 5, 5), dtype=float)
+        B_aug = np.zeros((n, 5, 2), dtype=float)
 
-class LQRController(ControllerBackend):
+        for i in range(n):
+            A_aug[i, :3, :3] = As[i]
+            A_aug[i, :3, 3:] = Bs[i]
+            A_aug[i, 3:, 3:] = np.eye(2, dtype=float)
+
+            B_aug[i, :3, :] = Bs[i]
+            B_aug[i, 3:, :] = np.eye(2, dtype=float)
+
+        return A_aug, B_aug
+
+
+class LQRSmoothingController(ControllerBackend):
     """Thin wrapper used by ROS2 frontend."""
 
     def __init__(self, config):
         cfg = dict(config.get("lqr", {}))
+        smooth_cfg = dict(config.get("lqr_smooth", {}))
         dt = float(config.get("dt", 0.1))
         horizon = int(cfg.get("horizon", 25))
         cost_coefs = {
@@ -222,12 +262,16 @@ class LQRController(ControllerBackend):
             [float(cfg.get("v_max", 1.0)), float(cfg.get("w_max", 1.2))], dtype=float
         )
 
-        self._algo = LQRAlgorithm(
+        self._algo = LQRSmoothingAlgorithm(
             cost_coefs=cost_coefs,
             dt=dt,
             n=horizon,
             u_min=u_min,
             u_max=u_max,
+            du_costs={
+                "dv": float(smooth_cfg.get("du_v_cost", 1.0)),
+                "dw": float(smooth_cfg.get("du_w_cost", 1.0)),
+            },
         )
         ref_cfg = dict(config.get("reference", {}))
         self._ref_kind = str(ref_cfg.get("kind", "to_goal"))
@@ -257,7 +301,7 @@ class LQRController(ControllerBackend):
         diff = pts - obs[:2]
         dist2 = np.sum(diff * diff, axis=1)
 
-        return start + int(np.argmin(dist2))   
+        return start + int(np.argmin(dist2))
 
     def get_action(self, observation, traj=None):
         obs = np.asarray(observation, dtype=float).reshape(3)
@@ -268,35 +312,65 @@ class LQRController(ControllerBackend):
 
         if self._z_ref is None or self._u_ref is None:
             self._tau_ref, self._z_ref, self._u_ref = generate_reference_trajectory(
-                kind=self._ref_kind, dt=self._algo.dt,
-                n_steps=self._ref_n_steps, start_state=obs, goal_state=self._goal,
+                kind=self._ref_kind,
+                dt=self._algo.dt,
+                n_steps=self._ref_n_steps,
+                start_state=obs,
+                goal_state=self._goal,
             )
 
-        # Stop first — before any index arithmetic
+        # ── Bug 1 fix: check goal FIRST and hard-stop before doing anything else
         goal_err = np.linalg.norm(obs[:2] - self._goal[:2])
-        yaw_err  = np.arctan2(np.sin(obs[2]-self._goal[2]), np.cos(obs[2]-self._goal[2]))
-        if goal_err < 0.15 and abs(yaw_err) < 0.15:
+        yaw_err  = np.arctan2(
+            np.sin(obs[2] - self._goal[2]),
+            np.cos(obs[2] - self._goal[2]),
+        )
+        if goal_err < 0.10 and abs(yaw_err) < 0.10:
+            self._algo.prev_u = np.zeros(2, dtype=float)
+            zero = np.zeros(2, dtype=float)
+            # Return dummy z_sol/u_sol so callers don't break
             dummy = np.zeros((self._algo.n, 3), dtype=float)
             dummy_u = np.zeros((self._algo.n, 2), dtype=float)
-            return np.zeros(2, dtype=float), dummy, dummy_u
+            return zero, dummy, dummy_u
 
-        ref_idx = self.closest_reference_index(self._z_ref, obs, self._step)
-        ref_idx = min(ref_idx, self._z_ref.shape[0] - 2)
+        ref_idx = self.closest_reference_index(
+            self._z_ref, obs, self._step
+        )
 
-        zRefWin, uRefWin = self.sample_reference_window(
+        # ── Bug 1 fix: clamp ref_idx so it never runs off the end of the trajectory
+        max_idx = self._z_ref.shape[0] - 2   # leave at least a 2-step window
+        ref_idx = min(ref_idx, max_idx)
+
+        z_ref_win, u_ref_win = self.sample_reference_window(
             self._z_ref, self._u_ref, ref_idx, self._algo.n
         )
+
+        # ── Bug 2 fix: zero out the padded tail's reference actions
         n_remaining = self._u_ref.shape[0] - ref_idx
         if n_remaining < self._algo.n:
-            uRefWin[n_remaining:] = 0.0
+            u_ref_win[n_remaining:] = 0.0   # don't chase a stale non-zero u_ref
 
-        z_sol, u_sol, tau_sol = self._algo.solve(
-            z_0=obs, t_0=ref_idx * self._algo.dt,
-            z_ref=zRefWin, u_ref=uRefWin
+        # ── Bug 3 fix: u_prev_ref_0 is zeros before the trajectory starts
+        if ref_idx > 0:
+            u_prev_ref_0 = np.asarray(
+                self._u_ref[ref_idx - 1], dtype=float
+            ).reshape(2)
+        else:
+            u_prev_ref_0 = np.zeros(2, dtype=float)   # robot was stationary
+
+        z_sol, u_sol, _ = self._algo.solve(
+            z_0=obs,
+            t_0=ref_idx * self._algo.dt,
+            z_ref=z_ref_win,
+            u_ref=u_ref_win,
+            u_prev_0=self._algo.prev_u,
+            u_prev_ref_0=u_prev_ref_0,
         )
 
         action = u_sol[0, :]
+        self._algo.prev_u = action.copy()
         self._step = ref_idx + 1
+
         return np.clip(action, self._u_min, self._u_max), z_sol, u_sol
 
     @staticmethod

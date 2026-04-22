@@ -30,6 +30,7 @@ setup(
     entry_points={
         "console_scripts": [
             "controller = controller.controller_node:main",
+            "figure8_publisher = controller.figure8_publisher:main",
         ],
     },
 )

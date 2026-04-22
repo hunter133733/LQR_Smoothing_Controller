@@ -1,0 +1,42 @@
+[
+  {
+    "name": "baseline_lqr",
+    "pos_mse": 0.0,
+    "theta_mse": 0.0,
+    "max_pos_err": 0.0,
+    "control_energy": 106.00000000000004,
+    "delta_u_energy": 0.0,
+    "delta_v_energy": 0.0,
+    "delta_w_energy": 0.0
+  },
+  {
+    "name": "smooth_light",
+    "pos_mse": 0.5362361968205492,
+    "theta_mse": 2.0491645301325643,
+    "max_pos_err": 1.0872576409160741,
+    "control_energy": 163.64762573366124,
+    "delta_u_energy": 0.4974035854805781,
+    "delta_v_energy": 0.21546005201732818,
+    "delta_w_energy": 0.2819435334632501
+  },
+  {
+    "name": "smooth_medium",
+    "pos_mse": 0.5362361968205492,
+    "theta_mse": 2.0491645301325643,
+    "max_pos_err": 1.0872576409160741,
+    "control_energy": 163.64762573366124,
+    "delta_u_energy": 0.4974035854805781,
+    "delta_v_energy": 0.21546005201732818,
+    "delta_w_energy": 0.2819435334632501
+  },
+  {
+    "name": "smooth_heavy",
+    "pos_mse": 0.5362361968205492,
+    "theta_mse": 2.0491645301325643,
+    "max_pos_err": 1.0872576409160741,
+    "control_energy": 163.64762573366124,
+    "delta_u_energy": 0.4974035854805781,
+    "delta_v_energy": 0.21546005201732818,
+    "delta_w_energy": 0.2819435334632501
+  }
+]

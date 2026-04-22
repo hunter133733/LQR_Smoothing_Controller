@@ -45,6 +45,8 @@ class ControllerNode(Node):
         super().__init__("controller_node")
 
         # fmt: off
+        self.declare_parameter("goal_tolerance_m", 0.25)  # distance threshold
+        self.declare_parameter("goal_settle_steps", 3)     # consecutive ticks required
         self.declare_parameter("backend_class", "controller.lqr_algorithm:LQRController")
         self.declare_parameter("pose_topic", "/robot_pose")
         self.declare_parameter("cmd_vel_topic", "/cmd_vel")
@@ -66,6 +68,8 @@ class ControllerNode(Node):
         self.declare_parameter("goal_x", 3.5)
         self.declare_parameter("goal_y", 2.5)
         self.declare_parameter("goal_theta", 0.0)
+        self.declare_parameter("lqr_smooth.du_w_cost", 1.0)
+        self.declare_parameter("lqr_smooth.du_v_cost", 1.0)
 
         self.declare_parameter("cbf.gamma_cbf", 2.0)
         self.declare_parameter("cbf.lookahead_distance", 0.8)
@@ -93,6 +97,15 @@ class ControllerNode(Node):
         rate_hz = max(1e-3, float(self.get_parameter("control_rate").value))
         self._latest_state = None
         self._latest_traj = None
+
+         # Goal-reached shutdown state
+        self._goal_xy      = np.array([
+            float(self.get_parameter("goal_x").value),
+            float(self.get_parameter("goal_y").value),
+        ], dtype=float)
+        self._goal_tol_m   = float(self.get_parameter("goal_tolerance_m").value)
+        self._settle_steps = int(self.get_parameter("goal_settle_steps").value)
+        self._settle_count = 0
 
         self.obs_pub = self.create_publisher(MarkerArray, "obstacle", 10)
         self.traj_path_pub = self.create_publisher(Path, "lqr_traj_path", 10)
@@ -161,6 +174,10 @@ class ControllerNode(Node):
                 "v_max": float(self.get_parameter("lqr.v_max").value),
                 "w_min": float(self.get_parameter("lqr.w_min").value),
                 "w_max": float(self.get_parameter("lqr.w_max").value),
+            },
+            "lqr_smooth" : {
+                "du_v_cost" : float(self.get_parameter("lqr_smooth.du_v_cost").value),
+                "du_w_cost" : float(self.get_parameter("lqr_smooth.du_w_cost").value),
             },
             "cbf": {
                 "gamma_cbf": float(self.get_parameter("cbf.gamma_cbf").value),
@@ -276,6 +293,27 @@ class ControllerNode(Node):
                 ]
             )
             self._log_file.flush()
+        # ── goal-reached shutdown ─────────────────────────────────────────────
+        dist = float(np.linalg.norm(
+            self._latest_state[:2] - self._goal_xy
+        ))
+        if dist < self._goal_tol_m:
+            self._settle_count += 1
+        else:
+            self._settle_count = 0
+
+        if self._settle_count >= self._settle_steps:
+            stop = Twist()
+            self._cmd_pub.publish(stop)
+            self._log_file.flush()
+            self._log_file.close()
+            self.get_logger().info(
+                f"Goal reached — {dist:.3f} m away for "
+                f"{self._settle_steps} consecutive ticks. Shutting down."
+            )
+            self._timer.cancel()
+            raise SystemExit(0)
+        # ── end goal-reached shutdown ─────────────────────────────────────────
 
         # STUDENT CODE END
 
@@ -392,7 +430,7 @@ def main() -> None:
     node = ControllerNode()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         pass
     finally:
         try:

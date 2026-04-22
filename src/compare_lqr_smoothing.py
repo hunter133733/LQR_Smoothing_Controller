@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from controller.lqr_algorithm import LQRController
-from controller.smooth_lqr_algorithm import SmoothedLQRController
+from controller.lqr_smoothing_algorithm import LQRSmoothingController
 from nav_helpers.trajectory import StateActionTrajectory
 
 
@@ -24,6 +24,8 @@ class RunResult:
     delta_u_energy: float
     delta_v_energy: float
     delta_w_energy: float
+    max_dv: float
+    max_dw: float
 
 
 def wrap_angle(a: float) -> float:
@@ -138,6 +140,8 @@ def compute_metrics(name: str, X: np.ndarray, U: np.ndarray, traj: StateActionTr
         delta_u_energy=float(np.sum(np.sum(dU**2, axis=1))),
         delta_v_energy=float(np.sum(dU[:, 0] ** 2)) if dU.shape[0] else 0.0,
         delta_w_energy=float(np.sum(dU[:, 1] ** 2)) if dU.shape[0] else 0.0,
+        max_dv=float(np.max(np.abs(dU[:, 0]))) if dU.shape[0] else 0.0,
+        max_dw=float(np.max(np.abs(dU[:, 1]))) if dU.shape[0] else 0.0,
     )
 
 
@@ -202,20 +206,22 @@ def plot_run_comparison(traj, results, title, outdir):
 
 
 def print_metrics_table(results):
-    print("\n" + "=" * 110)
+    print("\n" + "=" * 138)
     print(
-        f"{'name':24s} {'pos_mse':>12s} {'theta_mse':>12s} {'max_pos_err':>14s} "
-        f"{'u_energy':>12s} {'du_energy':>12s} {'dv_energy':>12s} {'dw_energy':>12s}"
+        f"{'name':28s} {'pos_mse':>12s} {'theta_mse':>12s} {'max_pos_err':>14s} "
+        f"{'u_energy':>12s} {'du_energy':>12s} {'dv_energy':>12s} {'dw_energy':>12s} "
+        f"{'max_dv':>10s} {'max_dw':>10s}"
     )
-    print("-" * 110)
+    print("-" * 138)
     for r in results:
         print(
-            f"{r.name:24s} "
+            f"{r.name:28s} "
             f"{r.pos_mse:12.6f} {r.theta_mse:12.6f} {r.max_pos_err:14.6f} "
             f"{r.control_energy:12.6f} {r.delta_u_energy:12.6f} "
-            f"{r.delta_v_energy:12.6f} {r.delta_w_energy:12.6f}"
+            f"{r.delta_v_energy:12.6f} {r.delta_w_energy:12.6f} "
+            f"{r.max_dv:10.6f} {r.max_dw:10.6f}"
         )
-    print("=" * 110 + "\n")
+    print("=" * 138 + "\n")
 
 def save_case_metrics(results, title, outdir):
     os.makedirs(outdir, exist_ok=True)
@@ -232,6 +238,8 @@ def save_case_metrics(results, title, outdir):
         "delta_u_energy",
         "delta_v_energy",
         "delta_w_energy",
+        "max_dv",
+        "max_dw",
     ]
 
     with open(csv_path, "w", newline="") as f:
@@ -248,6 +256,8 @@ def save_case_metrics(results, title, outdir):
                     "delta_u_energy": r.delta_u_energy,
                     "delta_v_energy": r.delta_v_energy,
                     "delta_w_energy": r.delta_w_energy,
+                    "max_dv": r.max_dv,
+                    "max_dw": r.max_dw,
                 }
             )
 
@@ -287,6 +297,8 @@ def save_summary_metrics(all_results, outdir):
         "delta_u_energy",
         "delta_v_energy",
         "delta_w_energy",
+        "max_dv",
+        "max_dw",
     ]
 
     with open(csv_path, "w", newline="") as f:
@@ -305,6 +317,8 @@ def save_summary_metrics(all_results, outdir):
                         "delta_u_energy": r.delta_u_energy,
                         "delta_v_energy": r.delta_v_energy,
                         "delta_w_energy": r.delta_w_energy,
+                        "max_dv": r.max_dv,
+                        "max_dw": r.max_dw,
                     }
                 )
 
@@ -320,6 +334,8 @@ def save_summary_metrics(all_results, outdir):
                 "delta_u_energy": r.delta_u_energy,
                 "delta_v_energy": r.delta_v_energy,
                 "delta_w_energy": r.delta_w_energy,
+                "max_dv": r.max_dv,
+                "max_dw": r.max_dw,
             }
             for r in results
         ]
@@ -337,7 +353,23 @@ def run_angle_wrap_test():
     print("Expected: wrapped value should be small, not close to 2*pi.\n")
 
 
-def make_config(dv_cost=0.0, dw_cost=0.0):
+def make_aggressive_curve_reference(dt=0.1, n_steps=100, v=0.5, w=0.90):
+    """High-constant angular rate reference that stresses w-smoothing."""
+    states = np.zeros((n_steps + 1, 3), dtype=float)
+    actions = np.zeros((n_steps, 2), dtype=float)
+    actions[:, 0] = v
+    actions[:, 1] = w
+    for k in range(n_steps):
+        x, y, th = states[k]
+        states[k + 1] = [
+            x + v * math.cos(th) * dt,
+            y + v * math.sin(th) * dt,
+            th + w * dt,
+        ]
+    return StateActionTrajectory(states=states, actions=actions, dt=dt)
+
+
+def make_config(alpha_v=0.35, alpha_w=0.20, max_dv=0.15, max_dw=0.35):
     return {
         "dt": 0.1,
         "goal": np.array([5.0, 0.0, 0.0], dtype=float),
@@ -349,29 +381,36 @@ def make_config(dv_cost=0.0, dw_cost=0.0):
             "theta_cost": 1.0,
             "v_cost": 0.3,
             "w_cost": 0.3,
-            "dv_cost": dv_cost,
-            "dw_cost": dw_cost,
             "v_min": -0.2,
             "v_max": 1.0,
             "w_min": -1.2,
             "w_max": 1.2,
         },
+        "lqr_smooth": {
+            "alpha_v": alpha_v,
+            "alpha_w": alpha_w,
+            "max_dv": max_dv,
+            "max_dw": max_dw,
+        },
     }
 
 
 def run_one_case(title, traj, x0, outdir):
-    baseline = LQRController(make_config(dv_cost=0.0, dw_cost=0.0))
-    smooth_zero = SmoothedLQRController(make_config(dv_cost=0.0, dw_cost=0.0))
-    smooth_on = SmoothedLQRController(make_config(dv_cost=0.05, dw_cost=0.20))
+    baseline      = LQRController(make_config())
+    smooth_light  = LQRSmoothingController(make_config(alpha_v=0.80, alpha_w=0.80, max_dv=0.50, max_dw=0.80))
+    smooth_medium = LQRSmoothingController(make_config(alpha_v=0.35, alpha_w=0.35, max_dv=0.15, max_dw=0.35))
+    smooth_heavy  = LQRSmoothingController(make_config(alpha_v=0.10, alpha_w=0.10, max_dv=0.05, max_dw=0.10))
 
-    Xb, Ub = simulate_controller(baseline, traj, x0)
-    Xz, Uz = simulate_controller(smooth_zero, traj, x0)
-    Xs, Us = simulate_controller(smooth_on, traj, x0)
+    Xb,  Ub  = simulate_controller(baseline,      traj, x0)
+    Xl,  Ul  = simulate_controller(smooth_light,  traj, x0)
+    Xm,  Um  = simulate_controller(smooth_medium, traj, x0)
+    Xh,  Uh  = simulate_controller(smooth_heavy,  traj, x0)
 
     results = [
-        compute_metrics("baseline_lqr", Xb, Ub, traj),
-        compute_metrics("smoothed_zero_penalty", Xz, Uz, traj),
-        compute_metrics("smoothed_nonzero_penalty", Xs, Us, traj),
+        compute_metrics("baseline_lqr",      Xb, Ub, traj),
+        compute_metrics("smooth_light",       Xl, Ul, traj),
+        compute_metrics("smooth_medium",      Xm, Um, traj),
+        compute_metrics("smooth_heavy",       Xh, Uh, traj),
     ]
 
     print(f"\n=== {title} ===")
@@ -393,15 +432,21 @@ def main():
     arc = make_arc_reference()
     s_curve = make_s_curve_reference()
 
+    aggressive_curve = make_aggressive_curve_reference()
+
     x0_1 = np.array([0.0, 0.20, 0.10], dtype=float)
     x0_2 = np.array([0.0, -0.25, -0.15], dtype=float)
     x0_3 = np.array([0.0, 0.15, 3.13], dtype=float)
+    x0_4 = np.array([0.0, 0.0, 0.0], dtype=float)
+    x0_5 = np.array([0.0, 0.60, 0.0], dtype=float)  # large initial offset
 
     all_results = {}
 
     all_results["straight_case"] = run_one_case("straight_case", straight, x0_1, outdir)
     all_results["arc_case"] = run_one_case("arc_case", arc, x0_2, outdir)
     all_results["s_curve_case"] = run_one_case("s_curve_case", s_curve, x0_3, outdir)
+    all_results["aggressive_curve"] = run_one_case("aggressive_curve", aggressive_curve, x0_4, outdir)
+    all_results["large_offset_s_curve"] = run_one_case("large_offset_s_curve", s_curve, x0_5, outdir)
 
     save_summary_metrics(all_results, outdir)
 
