@@ -1,4 +1,4 @@
-<library path="liblqr_nav2_controller">
+<library path="lqr_nav2_controller">
   <class name="lqr_nav2_controller::LQRController"
          type="lqr_nav2_controller::LQRController"
          base_class_type="nav2_core::Controller">

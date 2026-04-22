@@ -14,11 +14,15 @@ find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(angles REQUIRED)
-find_package(nav_helpers_msgs REQUIRED)
+find_package(Eigen3 REQUIRED)
+find_package(nav2_util REQUIRED)
+find_package(nav2_costmap_2d REQUIRED)
 
 add_library(lqr_nav2_controller SHARED
   src/lqr_controller.cpp
 )
+
+target_link_libraries(lqr_nav2_controller Eigen3::Eigen)
 
 target_include_directories(lqr_nav2_controller PUBLIC
   include
@@ -32,19 +36,39 @@ ament_target_dependencies(lqr_nav2_controller
   geometry_msgs
   tf2_ros
   Eigen3
-  nav_helpers_msgs
+  nav2_util
+  nav2_costmap_2d
 )
 
 pluginlib_export_plugin_description_file(nav2_core lqr_nav2_controller_plugins.xml)
-
+install(
+  FILES lqr_nav2_controller_plugins.xml
+  DESTINATION share/${PROJECT_NAME}
+)
 install(TARGETS lqr_nav2_controller
   LIBRARY DESTINATION lib
 )
 install(DIRECTORY include/
   DESTINATION include
 )
-install(FILES lqr_nav2_controller_plugins.xml
+install(DIRECTORY
+  launch config
   DESTINATION share/${PROJECT_NAME}
+)
+
+ament_export_dependencies(pluginlib nav2_core)
+ament_export_libraries(lqr_nav2_controller)
+
+ament_export_include_directories(include)
+ament_export_libraries(lqr_nav2_controller)
+ament_export_dependencies(
+  rclcpp
+  pluginlib
+  nav2_core
+  geometry_msgs
+  nav_msgs
+  tf2_ros
+  angles
 )
 
 if(BUILD_TESTING)
