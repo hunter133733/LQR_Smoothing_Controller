@@ -1,0 +1,8 @@
+metric,value
+mean_squared_tracking_error,9.397846337931549
+maximum_tracking_deviation,4.239468896783146
+control_effort,31.030987477462272
+runtime_per_trajectory_sec,0.14294445101404563
+avg_solver_runtime_ms,1.3359294487293982
+num_logged_steps,107
+final_cumulative_cost,6021.758076546386
