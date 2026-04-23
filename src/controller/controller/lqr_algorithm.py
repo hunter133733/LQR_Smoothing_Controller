@@ -118,11 +118,20 @@ class LQRAlgorithm:
 
             # TODO: Compute state deviation, and then the saturated tracking control
             # STUDENT CODE START
-
+            
+            #G et robots current state
             zT = self.dynsys.z_hist[-1, :]
+
+            # State error
             deltaZ = zT - z_track[i, :]
+
+            # Wrap heading error
             deltaZ[2] = np.arctan2(np.sin(deltaZ[2]), np.cos(deltaZ[2]))
+
+            # Tracking control law
             u_t = u_track[i, :] - Ks[i] @ deltaZ
+
+            # Enforce physical bounds b/c LQR is unconstrained
             u_t = np.clip(u_t, self.action_min, self.action_max)
             
             # STUDENT CODE END
@@ -162,16 +171,23 @@ class LQRAlgorithm:
         # Hint: start from P_{i+1}, compute K_i from the discrete-time
         # Riccati formula, then update P_i.
         # STUDENT CODE START
+
+        # Terminal cost
         Ps[n] = self.L
 
+        #Backward pass
         for i in range(n-1, -1, -1):
             At = As[i]
             Bt = Bs[i]
             Pnext = Ps[i+1]
 
+            # Input cost
             S = self.R + Bt.T @ Pnext @ Bt
+
+            # Optimal gain matrix
             Ks[i] = np.linalg.inv(S) @ (Bt.T @ Pnext @ At)
 
+            # Riccati Update
             Ps[i] = (
                 self.Q + (At.T @ Pnext @ At) - (At.T @ Pnext @ Bt @ Ks[i])
             )
@@ -242,6 +258,10 @@ class LQRController(ControllerBackend):
         self._u_min = u_min
         self._u_max = u_max
 
+
+
+    # Added function to search local window around prev_idx for the nearest reference point.
+    # Preventing looping paths and makes testing easier. 
     @staticmethod
     def closest_reference_index(
         z_ref: NDArray,
@@ -257,7 +277,8 @@ class LQRController(ControllerBackend):
         diff = pts - obs[:2]
         dist2 = np.sum(diff * diff, axis=1)
 
-        return start + int(np.argmin(dist2))   
+        return start + int(np.argmin(dist2)) 
+      
 
     def get_action(self, observation, traj=None):
         obs = np.asarray(observation, dtype=float).reshape(3)
@@ -272,30 +293,39 @@ class LQRController(ControllerBackend):
                 n_steps=self._ref_n_steps, start_state=obs, goal_state=self._goal,
             )
 
-        # Stop first — before any index arithmetic
+
+        # Stop and check to see if close to the goal, If we are close to the goal, return zero velocity
         goal_err = np.linalg.norm(obs[:2] - self._goal[:2])
         yaw_err  = np.arctan2(np.sin(obs[2]-self._goal[2]), np.cos(obs[2]-self._goal[2]))
         if goal_err < 0.15 and abs(yaw_err) < 0.15:
             dummy = np.zeros((self._algo.n, 3), dtype=float)
             dummy_u = np.zeros((self._algo.n, 2), dtype=float)
             return np.zeros(2, dtype=float), dummy, dummy_u
-
+        
+        # Find closest reference point to robot, using windowed search
         ref_idx = self.closest_reference_index(self._z_ref, obs, self._step)
         ref_idx = min(ref_idx, self._z_ref.shape[0] - 2)
-
+        
+        # Extract horizon length of the reference
         zRefWin, uRefWin = self.sample_reference_window(
             self._z_ref, self._u_ref, ref_idx, self._algo.n
         )
+
+        # If trajectory ends, ask robot to stop.
         n_remaining = self._u_ref.shape[0] - ref_idx
         if n_remaining < self._algo.n:
             uRefWin[n_remaining:] = 0.0
 
+        # Solve LQR
         z_sol, u_sol, tau_sol = self._algo.solve(
             z_0=obs, t_0=ref_idx * self._algo.dt,
             z_ref=zRefWin, u_ref=uRefWin
         )
 
+        # Receding horizon rule
         action = u_sol[0, :]
+
+        # advance progress counter
         self._step = ref_idx + 1
         return np.clip(action, self._u_min, self._u_max), z_sol, u_sol
 

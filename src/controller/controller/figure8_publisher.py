@@ -30,7 +30,7 @@ from rclpy.qos import QoSProfile, DurabilityPolicy
 from nav_helpers_msgs.msg import StateActionTrajectory as TrajMsg
 from nav_helpers.trajectory import StateActionTrajectory
 
-
+# Trajectory builder
 def make_figure8(
     cx: float = 0.0,
     cy: float = 0.0,
@@ -41,13 +41,8 @@ def make_figure8(
     start_x: float = -4.0,
     start_y: float = 3.5,
 ) -> StateActionTrajectory:
-    """
-    Build trajectory: straight approach -> n_laps figure-8 loops -> stop at (cx, cy).
 
-    StateActionTrajectory requires states.shape[0] == actions.shape[0] + 1.
-    """
-
-    # 1. Straight approach from spawn to crossing point
+    # 1: Straight approach from spawn to crossing point
     dx   = cx - start_x
     dy   = cy - start_y
     dist = math.hypot(dx, dy)
@@ -56,6 +51,7 @@ def make_figure8(
 
     app_states  = []
     app_actions = []
+
     for k in range(approach_steps):
         frac = k / approach_steps
         app_states.append([
@@ -64,10 +60,11 @@ def make_figure8(
             heading_approach,
         ])
         app_actions.append([v, 0.0])
+
     # Final approach state = crossing point, heading east ready for figure-8
     app_states.append([cx, cy, 0.0])
 
-    # 2. Figure-8 loops
+    # 2: Figure-8 loops
     w_mag            = v / radius
     steps_per_circle = int(round((2.0 * math.pi / w_mag) / dt))
     steps_per_fig8   = 2 * steps_per_circle
@@ -87,16 +84,11 @@ def make_figure8(
         loop_states.append([x_new, y_new, th_new])
         x, y, th = x_new, y_new, th_new
 
-    # 3. Combine
-    # app_states  : approach_steps + 1 entries (includes crossing point)
-    # loop_states : n_loop_actions entries
-    # total states  = approach_steps + 1 + n_loop_actions
-    # app_actions : approach_steps entries
-    # loop_actions: n_loop_actions entries
-    # total actions = approach_steps + n_loop_actions  (one less than states)
+    # 3: Combine approach and loop into one trajectory
     all_states  = np.array(app_states  + loop_states,  dtype=float)
     all_actions = np.array(app_actions + loop_actions, dtype=float)
 
+    # For testing
     assert all_states.shape[0] == all_actions.shape[0] + 1, (
         f"Shape mismatch: states {all_states.shape[0]} != "
         f"actions {all_actions.shape[0]} + 1"
@@ -105,6 +97,7 @@ def make_figure8(
     return StateActionTrajectory(states=all_states, actions=all_actions, dt=dt)
 
 
+# ROS2 publisher node
 class Figure8Publisher(Node):
     def __init__(self):
         super().__init__("figure8_publisher")
@@ -117,10 +110,11 @@ class Figure8Publisher(Node):
         self.declare_parameter("fig8.radius",      1.8)
         self.declare_parameter("fig8.speed",       0.3)
         self.declare_parameter("fig8.n_laps",      1)
-        # Spawn position in map frame — defaults match all your experiments
+        # Spawn position in map frame
         self.declare_parameter("fig8.start_x",   -4.0)
         self.declare_parameter("fig8.start_y",    3.5)
 
+        # Read parameter values
         traj_topic = str(self.get_parameter("nom_traj_topic").value)
         dt         = float(self.get_parameter("dt").value)
         cx         = float(self.get_parameter("fig8.center_x").value)
@@ -131,12 +125,14 @@ class Figure8Publisher(Node):
         start_x    = float(self.get_parameter("fig8.start_x").value)
         start_y    = float(self.get_parameter("fig8.start_y").value)
 
+        # Build trajectory
         self._traj = make_figure8(
             cx=cx, cy=cy, radius=radius,
             v=speed, dt=dt, n_laps=n_laps,
             start_x=start_x, start_y=start_y,
         )
 
+        # Logs
         n_states = self._traj.states.shape[0]
         duration = (n_states - 1) * dt
         self.get_logger().info(
@@ -163,7 +159,7 @@ class Figure8Publisher(Node):
         msg.header.stamp = self.get_clock().now().to_msg()
         self._pub.publish(msg)
 
-
+# ROS2 node entry point
 def main(args=None):
     rclpy.init(args=args)
     node = Figure8Publisher()
