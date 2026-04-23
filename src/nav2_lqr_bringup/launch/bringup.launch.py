@@ -1,169 +1,113 @@
-# =============================================================
-#  Minimal Nav2 parameter file for LQR controller
-#  Swap planner_server.ros__parameters.plugin under each name
-#  to change planners without touching anything else.
-# =============================================================
+import os
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, GroupAction
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch_ros.actions import Node, PushRosNamespace
+from launch_ros.substitutions import FindPackageShare
 
-# ── Lifecycle manager ─────────────────────────────────────────
-lifecycle_manager:
-  ros__parameters:
-    autostart: true
-    node_names:
-      - map_server
-      - amcl
-      - planner_server
-      - controller_server
-      - bt_navigator
 
-# ── Map server ───────────────────────────────────────────────
-map_server:
-  ros__parameters:
-    yaml_filename: "map.yaml"   # path resolved at launch time
-    topic_name: "map"
-    frame_id: "map"
+def generate_launch_description():
 
-# ── AMCL ─────────────────────────────────────────────────────
-amcl:
-  ros__parameters:
-    use_sim_time: true
+    # ── Arguments ────────────────────────────────────────────────
+    # Pass  planner:=smac  (or navfn / thetastar) on the command line.
+    # The argument just controls which commented block you activate in
+    # the YAML — or you can wire it to a different params file per planner.
+    pkg_share = FindPackageShare("nav2_lqr_bringup")
 
-    # Particle filter
-    min_particles: 500
-    max_particles: 2000
-    alpha1: 0.2   # rotation noise from rotation
-    alpha2: 0.2   # rotation noise from translation
-    alpha3: 0.2   # translation noise from translation
-    alpha4: 0.2   # translation noise from rotation
-    alpha5: 0.2   # (omni only)
+    params_file_arg = DeclareLaunchArgument(
+        "params_file",
+        default_value=PathJoinSubstitution([pkg_share, "config", "nav2_params.yaml"]),
+        description="Full path to the nav2 parameter file",
+    )
 
-    # Laser model
-    laser_model_type: "likelihood_field"
-    laser_max_range: 100.0
-    laser_min_range: -1.0
-    max_beams: 60
-    z_hit: 0.5
-    z_rand: 0.5
-    sigma_hit: 0.2
-    laser_likelihood_max_dist: 2.0
+    map_file_arg = DeclareLaunchArgument(
+        "map",
+        default_value=PathJoinSubstitution([pkg_share, "maps", "map.yaml"]),
+        description="Full path to the map yaml file",
+    )
 
-    # Frames
-    base_frame_id: "base_footprint"
-    odom_frame_id: "odom"
-    global_frame_id: "map"
-    scan_topic: "scan"
+    use_sim_time_arg = DeclareLaunchArgument(
+        "use_sim_time",
+        default_value="true",
+        description="Use simulation (Gazebo) clock if true",
+    )
 
-    # Recovery / initial pose
-    pf_err: 0.05
-    pf_z: 0.99
-    recovery_alpha_slow: 0.001
-    recovery_alpha_fast: 0.1
-    resample_interval: 1
-    save_pose_rate: 0.5
-    tf_broadcast: true
-    transform_tolerance: 1.0
-    update_min_a: 0.2
-    update_min_d: 0.25
+    params_file    = LaunchConfiguration("params_file")
+    map_file       = LaunchConfiguration("map")
+    use_sim_time   = LaunchConfiguration("use_sim_time")
 
-# ── Planner server ────────────────────────────────────────────
-# To swap planners: change `plugin` (and add its params block).
-# Three ready-to-use options are shown; uncomment one at a time.
-planner_server:
-  ros__parameters:
-    planner_plugins: ["GridBased"]
-    use_sim_time: true
-    expected_planner_frequency: 1.0
+    # ── Nodes ─────────────────────────────────────────────────────
+    map_server = Node(
+        package="nav2_map_server",
+        executable="map_server",
+        name="map_server",
+        output="screen",
+        parameters=[params_file, {"yaml_filename": map_file,
+                                   "use_sim_time": use_sim_time}],
+    )
 
-    GridBased:
-      # ── Option 1: NavFn (default Dijkstra/A*) ──────────────
-      plugin: "nav2_navfn_planner/NavfnPlanner"
-      tolerance: 0.5
-      use_astar: false          # true → A*, false → Dijkstra
-      allow_unknown: true
+    amcl = Node(
+        package="nav2_amcl",
+        executable="amcl",
+        name="amcl",
+        output="screen",
+        parameters=[params_file, {"use_sim_time": use_sim_time}],
+    )
 
-      # ── Option 2: Smac Planner 2D (lattice A*) ─────────────
-      # plugin: "nav2_smac_planner/SmacPlanner2D"
-      # tolerance: 0.125
-      # downsample_costmap: false
-      # downsampling_factor: 1
-      # allow_unknown: true
-      # max_iterations: 1000000
-      # max_planning_time: 2.0
-      # cost_travel_multiplier: 2.0
-      # use_final_approach_orientation: false
+    planner_server = Node(
+        package="nav2_planner",
+        executable="planner_server",
+        name="planner_server",
+        output="screen",
+        parameters=[params_file, {"use_sim_time": use_sim_time}],
+    )
 
-      # ── Option 3: Theta* (any-angle) ───────────────────────
-      # plugin: "nav2_theta_star_planner/ThetaStarPlanner"
-      # how_many_corners: 8
-      # w_euc_cost: 1.0
-      # w_traversal_cost: 2.0
-      # w_heuristic_cost: 1.0
+    controller_server = Node(
+        package="nav2_controller",
+        executable="controller_server",
+        name="controller_server",
+        output="screen",
+        parameters=[params_file, {"use_sim_time": use_sim_time}],
+        # Remaps cmd_vel so a velocity smoother or mux can sit in between.
+        # Remove the remap if you want to drive the robot directly.
+        remappings=[("cmd_vel", "cmd_vel_nav")],
+    )
 
-# ── Controller server ─────────────────────────────────────────
-controller_server:
-  ros__parameters:
-    use_sim_time: true
-    controller_frequency: 10.0
-    min_x_velocity_threshold: 0.001
-    min_y_velocity_threshold: 0.001
-    min_theta_velocity_threshold: 0.001
-    failure_tolerance: 0.3
+    bt_navigator = Node(
+        package="nav2_bt_navigator",
+        executable="bt_navigator",
+        name="bt_navigator",
+        output="screen",
+        parameters=[params_file, {"use_sim_time": use_sim_time}],
+    )
 
-    progress_checker_plugins: ["progress_checker"]
-    goal_checker_plugins:     ["goal_checker"]
-    controller_plugins:       ["FollowPath"]
+    lifecycle_manager = Node(
+        package="nav2_lifecycle_manager",
+        executable="lifecycle_manager",
+        name="lifecycle_manager",
+        output="screen",
+        parameters=[
+            {"autostart": True},
+            {"use_sim_time": use_sim_time},
+            {"node_names": [
+                "map_server",
+                "amcl",
+                "planner_server",
+                "controller_server",
+                "bt_navigator",
+            ]},
+        ],
+    )
 
-    progress_checker:
-      plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.5
-      movement_time_allowance: 10.0
-
-    goal_checker:
-      plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25
-      yaw_goal_tolerance: 0.25
-      stateful: true
-
-    FollowPath:
-      plugin: "lqr_nav2_controller/LQRController"
-
-      # Timestep must match controller_frequency above (1/10 = 0.1)
-      dt:          0.1
-      horizon:     25
-
-      # State cost weights
-      cost_x:     5.0
-      cost_y:     5.0
-      cost_theta: 1.0
-
-      # Absolute-velocity cost (penalises large v/w in aug state)
-      cost_v: 0.3
-      cost_w: 0.3
-
-      # Control-rate cost (penalises jerky commands)
-      cost_dv: 1.0
-      cost_dw: 1.0
-
-      # Velocity limits
-      v_min: -0.2
-      v_max:  1.0
-      w_min: -1.2
-      w_max:  1.2
-
-# ── BT Navigator ─────────────────────────────────────────────
-bt_navigator:
-  ros__parameters:
-    use_sim_time: true
-    global_frame: "map"
-    robot_base_frame: "base_link"
-    odom_topic: "/odom"
-    bt_loop_duration: 10          # ms
-    default_server_timeout: 20    # s
-    wait_for_service_timeout: 1000
-
-    navigators: ["navigate_to_pose"]
-
-    navigate_to_pose:
-      plugin: "nav2_bt_navigator/NavigateToPoseNavigator"
-
-    # Default BT — ships with nav2, handles replanning on failure
-    default_nav_to_pose_bt_xml: ""   # leave empty to use nav2 default
+    return LaunchDescription([
+        params_file_arg,
+        map_file_arg,
+        use_sim_time_arg,
+        map_server,
+        amcl,
+        planner_server,
+        controller_server,
+        bt_navigator,
+        lifecycle_manager,
+    ])
