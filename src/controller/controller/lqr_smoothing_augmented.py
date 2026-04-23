@@ -8,51 +8,53 @@ from controller.dubins3d_2ctrls import DubinsCar3D2Ctrls
 from controller.reference_trajectory import generate_reference_trajectory
 from nav_helpers.trajectory import StateActionTrajectory
 
+
+# Default cost weights
+# Tuning knobs. YAML files overwrite these and change them for testing cases
 DEFAULT_COST_COEFS = {
     "x": 5.0,
     "y": 5.0,
     "theta": 1.0,
-    "v": 0.3,
-    "w": 0.3,
+    "v": 0.3, # Abs linear velocity penalty
+    "w": 0.3, # Abs angular velocity penalty
 }
 
-
+# Augmented state: x_aug = [x, y, theta, v_prev, w_prev]
+# New control variable: du = u_k - u_{k-1}
+# This Lets us penalize command-rate changes inside the optimization. 
 class LQRSmoothingAlgorithm:
-    """Finite-horizon time-varying LQR with lecture-style input-rate penalty.
-
-    Augmented state:
-        x_aug = [x, y, theta, v_prev, w_prev]
-
-    New control variable:
-        du = u_k - u_{k-1}
-
-    This lets us penalize command-rate changes inside the optimization instead of
-    smoothing the final command after solving plain LQR.
-    """
-
+    
+    
     def __init__(
         self,
-        cost_coefs: Dict | None = None,
-        dt: float = 0.1,
-        n: int = 25,
-        u_min: NDArray | None = None,
-        u_max: NDArray | None = None,
-        du_costs: Dict | None = None,
+        cost_coefs: Dict | None = None, # Per state cost weights (x, y, theta, v, w)
+        dt: float = 0.1, # Timestep (seconds) used for linearisation
+        n: int = 25, # Horizon length H. Needed for LQR Riccati recursion
+        u_min: NDArray | None = None, # Limits on v, w. 
+        u_max: NDArray | None = None, # Limits on v, w
+        du_costs: Dict | None = None, # Penalty weights on control rate.
     ):
         self.n = int(max(1, n))
         self.dt = float(dt)
         self.cost_coefs = dict(DEFAULT_COST_COEFS if cost_coefs is None else cost_coefs)
 
+        # Build LQR cost matrices
         self.Qx = np.diag(
             [self.cost_coefs["x"], self.cost_coefs["y"], self.cost_coefs["theta"]]
         ).astype(float)
+
+        # Cost-to-go at the end of the horizon
         self.Lx = self.Qx.copy()
+
+        # Penalizes the absolute velocity in the augmented-state
         self.Ru = np.diag([self.cost_coefs["v"], self.cost_coefs["w"]]).astype(float)
 
+        # Penalizes the change in control
         if du_costs is None:
             du_costs = {"dv": 1.0, "dw": 1.0}
         self.Rdu = np.diag([float(du_costs["dv"]), float(du_costs["dw"])]).astype(float)
 
+        # Control limits:
         u_min_arr = (
             np.array([-0.2, -1.2], dtype=float)
             if u_min is None
@@ -64,6 +66,8 @@ class LQRSmoothingAlgorithm:
             else np.asarray(u_max, dtype=float).reshape(2)
         )
 
+
+        #Dynamics model:
         self.dynsys = DubinsCar3D2Ctrls(
             z_0=np.zeros(3, dtype=float),
             dt=self.dt,
@@ -78,6 +82,8 @@ class LQRSmoothingAlgorithm:
         self.action_min = u_min_arr
         self.action_max = u_max_arr
 
+
+        # Augmented cost matrices Q and L (slide 19 in berkley lecture for visualization)
         self.Q_aug = np.block(
             [
                 [self.Qx, np.zeros((3, 2), dtype=float)],
@@ -95,7 +101,7 @@ class LQRSmoothingAlgorithm:
         self.u_sol: NDArray | None = None
         self.tau_sol: NDArray | None = None
 
-        # Real previously applied control.
+        # Memory of the last applied control
         self.prev_u = np.zeros(2, dtype=float)
 
     def __str__(self):
@@ -107,6 +113,7 @@ class LQRSmoothingAlgorithm:
         ret += f"- du_costs: diag({np.diag(self.Rdu)})\n"
         return ret
 
+    # Solve interface (public)
     def solve(
         self,
         z_0: NDArray,
@@ -116,7 +123,9 @@ class LQRSmoothingAlgorithm:
         u_prev_0: NDArray,
         u_prev_ref_0: NDArray,
     ) -> Tuple[NDArray, NDArray, NDArray]:
-        """Solve augmented LQR tracking with delta-u as the control variable."""
+        
+
+        # Input validation and type coercion
         z_ref = np.asarray(z_ref, dtype=float)
         u_ref = np.asarray(u_ref, dtype=float)
         z_0 = np.asarray(z_0, dtype=float).reshape(3)
@@ -124,29 +133,45 @@ class LQRSmoothingAlgorithm:
         u_prev_ref_0 = np.asarray(u_prev_ref_0, dtype=float).reshape(2)
         t_0 = float(t_0)
 
+
+        # if statements used for testing
         if z_ref.ndim != 2 or z_ref.shape[1] != 3:
-            raise ValueError("z_ref must have shape (T, 3)")
+            raise ValueError("z_ref wrong shape")
         if u_ref.ndim != 2 or u_ref.shape[1] != 2:
-            raise ValueError("u_ref must have shape (T, 2)")
+            raise ValueError("u_ref wrong shape")
         if z_ref.shape[0] < 2 or u_ref.shape[0] < 1:
             raise ValueError("reference trajectories are too short")
 
+        # Clamping horizon to available reference length, ensuring model doesn't
+        # try to predict further into future than it can justify
         n_track = int(min(self.n, z_ref.shape[0], u_ref.shape[0]))
         z_track = z_ref[:n_track, :]
         u_track = u_ref[:n_track, :]
 
+        # Step 1: Linearize along reference
         As, Bs = self.linearize_along_traj(z_track, u_track)
+
+        # Step 2: Build augmented dynamics
         A_aug, B_aug = self.build_augmented_dynamics(As, Bs)
+
+        # Step 3: Run Riccati recursion:
+        # Compute gains runs backward pass
         Ks, _ = self.compute_gains(A_aug, B_aug)
 
+
+        # Precompute reference du. Allows controller to correct deviations around ref rate
         u_prev_ref = np.zeros((n_track, 2), dtype=float)
         du_ref = np.zeros((n_track, 2), dtype=float)
+
         u_prev_ref[0, :] = u_prev_ref_0
         du_ref[0, :] = u_track[0, :] - u_prev_ref[0, :]
+
         for i in range(1, n_track):
             u_prev_ref[i, :] = u_track[i - 1, :]
             du_ref[i, :] = u_track[i, :] - u_prev_ref[i, :]
 
+
+        # Step 4: Forward sim
         self.dynsys.reset(z_0)
         z_pred = np.zeros((n_track, 3), dtype=float)
         u_pred = np.zeros((n_track, 2), dtype=float)
@@ -155,16 +180,23 @@ class LQRSmoothingAlgorithm:
         u_prev_now = u_prev_0.copy()
 
         for i in range(n_track):
+
+            # Augmented state and ref
             x_aug_now = np.concatenate([z_now, u_prev_now])
             x_aug_ref = np.concatenate([z_track[i, :], u_prev_ref[i, :]])
 
+            # Error in augmented state
             delta_aug = x_aug_now - x_aug_ref
+
+            # Wrap heading error (to help avoid discontinuities)
             delta_aug[2] = np.arctan2(np.sin(delta_aug[2]), np.cos(delta_aug[2]))
 
+            # Closed-loop law
             du_t = du_ref[i, :] - Ks[i] @ delta_aug
             u_t = u_prev_now + du_t
             u_t = np.clip(u_t, self.action_min, self.action_max)
 
+            # Sim a step of non linear dynamics
             self.dynsys.forward_np(dt=self.dt, ctrl=u_t)
             z_now = self.dynsys.z_hist[-1, :]
             u_prev_now = u_t.copy()
@@ -172,24 +204,31 @@ class LQRSmoothingAlgorithm:
             z_pred[i, :] = z_now
             u_pred[i, :] = u_t
 
+        # Cache and return
         self.z_sol = z_pred
         self.u_sol = u_pred
         self.tau_sol = t_0 + np.linspace(self.dt, self.dt * n_track, n_track)
         return self.z_sol, self.u_sol, self.tau_sol
 
+
+    # Backward Riccati recursion
     def compute_gains(self, As: NDArray, Bs: NDArray) -> Tuple[NDArray, NDArray]:
-        """Finite-horizon LQR gains for the augmented system."""
+
         As = np.asarray(As, dtype=float)
         Bs = np.asarray(Bs, dtype=float)
         if As.shape[0] != Bs.shape[0]:
             raise ValueError("As and Bs must have same horizon length")
 
         n = As.shape[0]
+
+        # Gains k_t and cost-to-go P_t preallocated
         Ks = np.zeros((n, 2, 5), dtype=float)
         Ps = np.zeros((n + 1, 5, 5), dtype=float)
 
+        # Terminal condition (cost-to-go = L, at step n)
         Ps[n] = self.L_aug
 
+        # Backward pass
         for i in range(n - 1, -1, -1):
             At = As[i]
             Bt = Bs[i]
@@ -198,43 +237,58 @@ class LQRSmoothingAlgorithm:
             S = self.Rdu + Bt.T @ Pnext @ Bt
             Ks[i] = np.linalg.inv(S) @ (Bt.T @ Pnext @ At)
             Ps[i] = self.Q_aug + (At.T @ Pnext @ At) - (At.T @ Pnext @ Bt @ Ks[i])
-
         return Ks, Ps
 
+
+
+    # Gets (At, Bt) from nonlinear model.
+    # Linearizes the original Dubins dynamics at each point along the reference trajectory
     def linearize_along_traj(
         self, z_traj: NDArray, u_traj: NDArray
     ) -> Tuple[NDArray, NDArray]:
-        """Linearize original Dubins system along the reference trajectory."""
+
         z_traj = np.asarray(z_traj, dtype=float)
         u_traj = np.asarray(u_traj, dtype=float)
+
         if z_traj.shape[0] != u_traj.shape[0]:
             raise ValueError("z_traj and u_traj must have same number of rows")
 
         n = int(min(self.n, z_traj.shape[0]))
         As = np.zeros((n, 3, 3), dtype=float)
         Bs = np.zeros((n, 3, 2), dtype=float)
+
         for t in range(n):
             As[t], Bs[t] = self.dynsys.linearize(
                 z_t=z_traj[t, :], u_t=u_traj[t, :], discrete=True, dt=self.dt
             )
         return As, Bs
 
+
+    #Builds the augmented dyanmics with du as the new control.
     @staticmethod
     def build_augmented_dynamics(
         As: NDArray,
         Bs: NDArray,
     ) -> Tuple[NDArray, NDArray]:
-        """Build lecture-style augmented dynamics with du as the new control."""
+    
         n = As.shape[0]
         A_aug = np.zeros((n, 5, 5), dtype=float)
         B_aug = np.zeros((n, 5, 2), dtype=float)
 
         for i in range(n):
+            # State transition (A_t)
             A_aug[i, :3, :3] = As[i]
+
+            # How u_prev affects next z (B_t)
             A_aug[i, :3, 3:] = Bs[i]
+
+            # identity
             A_aug[i, 3:, 3:] = np.eye(2, dtype=float)
 
+            # Enter z dynamics (B_t)
             B_aug[i, :3, :] = Bs[i]
+
+            # identity
             B_aug[i, 3:, :] = np.eye(2, dtype=float)
 
         return A_aug, B_aug
