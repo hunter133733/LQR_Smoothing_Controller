@@ -124,4 +124,11 @@ controller_server:
 ```
 ---
 
-## License
+## References
+
+- ROS 2 Navigation Working Group. *Nav2 Controller Plugin Development Tutorial*.  
+  https://navigation.ros.org/plugin_tutorials/docs/writing_new_nav2controller_plugin.html  
+  Accessed: 2026-02-15
+- ROS 2 Navigation Working Group. *nav2_core (Navigation2 Humble branch)*  
+  https://github.com/ros-navigation/navigation2/tree/humble/nav2_core  
+  Accessed: 2026-02-20
