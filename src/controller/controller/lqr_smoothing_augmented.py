@@ -294,14 +294,15 @@ class LQRSmoothingAlgorithm:
         return A_aug, B_aug
 
 
+# Wrapper for ROS2 frontend
 class LQRSmoothingController(ControllerBackend):
-    """Thin wrapper used by ROS2 frontend."""
 
     def __init__(self, config):
         cfg = dict(config.get("lqr", {}))
         smooth_cfg = dict(config.get("lqr_smooth", {}))
         dt = float(config.get("dt", 0.1))
         horizon = int(cfg.get("horizon", 25))
+
         cost_coefs = {
             "x": float(cfg.get("x_cost", DEFAULT_COST_COEFS["x"])),
             "y": float(cfg.get("y_cost", DEFAULT_COST_COEFS["y"])),
@@ -309,6 +310,7 @@ class LQRSmoothingController(ControllerBackend):
             "v": float(cfg.get("v_cost", DEFAULT_COST_COEFS["v"])),
             "w": float(cfg.get("w_cost", DEFAULT_COST_COEFS["w"])),
         }
+
         u_min = np.array(
             [float(cfg.get("v_min", -0.2)), float(cfg.get("w_min", -1.2))], dtype=float
         )
@@ -316,6 +318,7 @@ class LQRSmoothingController(ControllerBackend):
             [float(cfg.get("v_max", 1.0)), float(cfg.get("w_max", 1.2))], dtype=float
         )
 
+        # Instantiate algorithm
         self._algo = LQRSmoothingAlgorithm(
             cost_coefs=cost_coefs,
             dt=dt,
@@ -327,19 +330,29 @@ class LQRSmoothingController(ControllerBackend):
                 "dw": float(smooth_cfg.get("du_w_cost", 1.0)),
             },
         )
+
+        # Reference trajectory settings
         ref_cfg = dict(config.get("reference", {}))
         self._ref_kind = str(ref_cfg.get("kind", "to_goal"))
         self._ref_n_steps = int(ref_cfg.get("n_steps", 500))
+
+        # Goal state
         self._goal = np.asarray(
             config.get("goal", np.array([3.5, 2.5, 0.0])), dtype=float
         ).reshape(3)
+
+        # Internal State
         self._tau_ref: NDArray | None = None
         self._z_ref: NDArray | None = None
         self._u_ref: NDArray | None = None
         self._step = 0
+
         self._u_min = u_min
         self._u_max = u_max
 
+
+    # Find the index of the reference point nearest to the robot's current (x, y)
+    # position, searching around prev_idx
     @staticmethod
     def closest_reference_index(
         z_ref: NDArray,
@@ -348,6 +361,8 @@ class LQRSmoothingController(ControllerBackend):
         search_back: int = 5,
         search_ahead: int = 60,
     ) -> int:
+        
+        # Clamp window to valid array range
         start = max(0, prev_idx - search_back)
         end = min(z_ref.shape[0], prev_idx + search_ahead)
 
@@ -357,13 +372,18 @@ class LQRSmoothingController(ControllerBackend):
 
         return start + int(np.argmin(dist2))
 
+
+    # Computer next control action given current observation
     def get_action(self, observation, traj=None):
+
         obs = np.asarray(observation, dtype=float).reshape(3)
 
+        # Accept external reference (planner node)
         if traj is not None:
             self._z_ref = traj.states
             self._u_ref = traj.actions
 
+        # generate a reference trajectory
         if self._z_ref is None or self._u_ref is None:
             self._tau_ref, self._z_ref, self._u_ref = generate_reference_trajectory(
                 kind=self._ref_kind,
@@ -373,7 +393,8 @@ class LQRSmoothingController(ControllerBackend):
                 goal_state=self._goal,
             )
 
-        # ── Bug 1 fix: check goal FIRST and hard-stop before doing anything else
+        # Check if we have reached goal before doing anything else.
+        # Without this check controller keeps searching for a ref index
         goal_err = np.linalg.norm(obs[:2] - self._goal[:2])
         yaw_err  = np.arctan2(
             np.sin(obs[2] - self._goal[2]),
@@ -387,24 +408,26 @@ class LQRSmoothingController(ControllerBackend):
             dummy_u = np.zeros((self._algo.n, 2), dtype=float)
             return zero, dummy, dummy_u
 
+        # Find where on the reference the robot is
         ref_idx = self.closest_reference_index(
             self._z_ref, obs, self._step
         )
 
-        # ── Bug 1 fix: clamp ref_idx so it never runs off the end of the trajectory
+        # clamp ref_idx so we never run off the end.
         max_idx = self._z_ref.shape[0] - 2   # leave at least a 2-step window
         ref_idx = min(ref_idx, max_idx)
 
+        # Extract horizon length window from reference
         z_ref_win, u_ref_win = self.sample_reference_window(
             self._z_ref, self._u_ref, ref_idx, self._algo.n
         )
 
-        # ── Bug 2 fix: zero out the padded tail's reference actions
         n_remaining = self._u_ref.shape[0] - ref_idx
         if n_remaining < self._algo.n:
             u_ref_win[n_remaining:] = 0.0   # don't chase a stale non-zero u_ref
 
-        # ── Bug 3 fix: u_prev_ref_0 is zeros before the trajectory starts
+        # When window starts, the robot is stationary (ref_idx = 0), so otherwise
+        # we look up the reference control one step back.
         if ref_idx > 0:
             u_prev_ref_0 = np.asarray(
                 self._u_ref[ref_idx - 1], dtype=float
@@ -412,6 +435,8 @@ class LQRSmoothingController(ControllerBackend):
         else:
             u_prev_ref_0 = np.zeros(2, dtype=float)   # robot was stationary
 
+
+        # Solve LQR over horizon window.
         z_sol, u_sol, _ = self._algo.solve(
             z_0=obs,
             t_0=ref_idx * self._algo.dt,
@@ -421,12 +446,18 @@ class LQRSmoothingController(ControllerBackend):
             u_prev_ref_0=u_prev_ref_0,
         )
 
+        # First action
         action = u_sol[0, :]
+
+        # Update memory for next call
         self._algo.prev_u = action.copy()
         self._step = ref_idx + 1
 
         return np.clip(action, self._u_min, self._u_max), z_sol, u_sol
 
+
+    # Extract a fixed-length horizon slice
+    # If there are fewer horizon steps left in the reference, repeat the last entry.
     @staticmethod
     def sample_reference_window(
         z_ref: NDArray,
@@ -434,15 +465,17 @@ class LQRSmoothingController(ControllerBackend):
         start_idx: int,
         horizon: int,
     ) -> Tuple[NDArray, NDArray]:
-        """Slice a fixed-length horizon and pad with the final sample if needed."""
+        
         start = int(max(0, start_idx))
         horizon = int(max(1, horizon))
 
         z_out = np.zeros((horizon, 3), dtype=float)
         u_out = np.zeros((horizon, 2), dtype=float)
 
+        # last entries used for padding
         z_last = np.asarray(z_ref[-1], dtype=float).reshape(3)
         u_last = np.asarray(u_ref[-1], dtype=float).reshape(2)
+
         n_z = z_ref.shape[0]
         n_u = u_ref.shape[0]
 
