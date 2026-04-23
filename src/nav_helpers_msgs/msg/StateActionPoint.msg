@@ -1,3 +1,0 @@
-geometry_msgs/Pose pose
-geometry_msgs/Twist twist
-builtin_interfaces/Duration time_from_start

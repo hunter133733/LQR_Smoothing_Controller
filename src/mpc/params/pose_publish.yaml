@@ -1,7 +1,0 @@
-robot_pose_publisher:
-  ros__parameters:
-    pose_topic: /robot_pose
-    source_frame_id: base_link
-    target_frame_id: map
-    update_rate: 30.0
-    use_sim_time: true
