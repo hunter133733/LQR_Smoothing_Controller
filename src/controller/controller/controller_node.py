@@ -45,6 +45,9 @@ class ControllerNode(Node):
         super().__init__("controller_node")
 
         # fmt: off
+
+        # Added goal tolerance and settle step parameters so node can detect
+        # when there robot has reached goal.
         self.declare_parameter("goal_tolerance_m", 0.25)  # distance threshold
         self.declare_parameter("goal_settle_steps", 3)     # consecutive ticks required
         self.declare_parameter("backend_class", "controller.lqr_algorithm:LQRController")
@@ -68,6 +71,8 @@ class ControllerNode(Node):
         self.declare_parameter("goal_x", 3.5)
         self.declare_parameter("goal_y", 2.5)
         self.declare_parameter("goal_theta", 0.0)
+
+        # Added smoothing costs parameters
         self.declare_parameter("lqr_smooth.du_w_cost", 1.0)
         self.declare_parameter("lqr_smooth.du_v_cost", 1.0)
 
@@ -99,6 +104,7 @@ class ControllerNode(Node):
         self._latest_traj = None
 
          # Goal-reached shutdown state
+         # Added goal tracking variables
         self._goal_xy      = np.array([
             float(self.get_parameter("goal_x").value),
             float(self.get_parameter("goal_y").value),
@@ -114,6 +120,8 @@ class ControllerNode(Node):
         # TODO: Subs for robot pose, nominal trajectory, pub for /cmd_vel
         # Hint: follow the same ROS2 pattern as MPC Planner
         # STUDENT CODE START
+
+        # Pose subscriber so the controller can keep track robot's new pose estimate
         self._pose_sub = self.create_subscription(
             PoseStamped,
             pose_topic,
@@ -121,6 +129,7 @@ class ControllerNode(Node):
             10,
         )
 
+        # nominal trajectory subscriber so controller can receive reference plan from planner
         self._traj_sub = self.create_subscription(
             TrajMsg,
             nom_traj_topic,
@@ -128,6 +137,7 @@ class ControllerNode(Node):
             10,
         )
 
+        # cmd_vel publisher so controller can send velocity command
         self._cmd_pub = self.create_publisher(
             Twist,
             cmd_vel_topic,
@@ -175,6 +185,8 @@ class ControllerNode(Node):
                 "w_min": float(self.get_parameter("lqr.w_min").value),
                 "w_max": float(self.get_parameter("lqr.w_max").value),
             },
+
+            # Smoothing config block.
             "lqr_smooth" : {
                 "du_v_cost" : float(self.get_parameter("lqr_smooth.du_v_cost").value),
                 "du_w_cost" : float(self.get_parameter("lqr_smooth.du_w_cost").value),
@@ -229,6 +241,8 @@ class ControllerNode(Node):
     def _on_pose(self, msg: PoseStamped) -> None:
         # TODO: Save latest state in self._latest_state in numpy format
         # STUDENT CODE START
+
+        # pose-to-state conversion so ROS pose is turned into state vector
         q = msg.pose.orientation
         _, _, yaw = euler_from_quaternion(
             float(q.x), float(q.y), float(q.z), float(q.w)
@@ -255,6 +269,8 @@ class ControllerNode(Node):
         return
 
     def _on_timer(self) -> None:
+
+        # Force timer to only wait for robots state. Forces backend to decide how to handle trajectory if missing
         if self._latest_state is None:
             return
 
@@ -266,6 +282,8 @@ class ControllerNode(Node):
         # Hint: query the backend for [v, omega]. If something fails, publish
         # a safe zero command instead of crashing the node.
         # STUDENT CODE START
+
+        # Sends zero command if controller fails
         try:
             u, Z, U = self._backend.get_action(self._latest_state, self._latest_traj)
         except Exception as e:
@@ -293,7 +311,9 @@ class ControllerNode(Node):
                 ]
             )
             self._log_file.flush()
-        # ── goal-reached shutdown ─────────────────────────────────────────────
+
+
+        # goal-reached shutdown 
         dist = float(np.linalg.norm(
             self._latest_state[:2] - self._goal_xy
         ))
@@ -430,6 +450,8 @@ def main() -> None:
     node = ControllerNode()
     try:
         rclpy.spin(node)
+
+    # Changed so exits dont show error message
     except (KeyboardInterrupt, SystemExit):
         pass
     finally:
