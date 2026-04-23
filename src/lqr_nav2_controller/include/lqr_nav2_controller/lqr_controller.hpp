@@ -71,28 +71,22 @@ private:
 
 private:
     nav_msgs::msg::Path path_;
+    Eigen::Vector2d u_prev_{Eigen::Vector2d::Zero()};
 
     double dt_{0.1};
     int horizon_{25};
 
-    double v_min_{0.0}, v_max_{0.5};
+    double v_min_{-0.2}, v_max_{1.0};
     double w_min_{-1.2}, w_max_{1.2};
-
-    double max_linear_vel_{0.5};
-    double max_angular_vel_{1.0};
-
-    // ===== Method A matrices =====
-    Eigen::Matrix3d Qz_;     // state cost (x,y,theta)
-    Eigen::Matrix3d Lz_;     // terminal cost
-
-    Eigen::Matrix2d Ru_;     // control cost (v,w)
-    Eigen::Matrix2d Rdu_;    // delta control cost
 
     // augmented cost (5x5)
     Eigen::Matrix<double,5,5> Q_aug_;
     Eigen::Matrix<double,5,5> L_aug_;
 
-    Eigen::Vector2d delta_u_prev_{0.0, 0.0};
+    Eigen::Matrix3d Qz_;
+    Eigen::Matrix3d Ru_;
+    Eigen::Matrix3d Rdu_;
+    Eigen::Matrix<double, 5, 5> Q_aug_, L_aug_;
 };
 
 } // namespace lqr_nav2_controller

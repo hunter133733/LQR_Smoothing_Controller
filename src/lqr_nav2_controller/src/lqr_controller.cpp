@@ -50,7 +50,7 @@ void LQRController::configure(
 
     L_aug_ = Q_aug_;   // terminal cost same
 
-    delta_u_prev_.setZero();
+    u_prev_.setZero();
 }
 
 void LQRController::cleanup() {}
@@ -147,7 +147,10 @@ Eigen::Vector2d LQRController::solve(
     auto K = computeGains(A, B);
 
     Eigen::Vector3d z = z0;
-    Eigen::Vector2d delta_u_prev = delta_u_prev_;
+    Eigen::Vector2d u_prev = u_prev_;
+
+    std::vector<Eigen::Vector2d> u_prev_ref(N);
+    std::vector<Eigen::Vector2d> du_ref(N);
 
     Eigen::Vector2d u_out = Eigen::Vector2d::Zero();
 
@@ -157,16 +160,16 @@ Eigen::Vector2d LQRController::solve(
         e(2) = wrapAngle(e(2));
 
         Eigen::Matrix<double,5,1> xi;
-        xi << e, delta_u_prev;
 
-        Eigen::Vector2d du = -K[i] * xi;
+        xi << (z - z_ref[i]), u_prev - u_prev_ref[i];
 
-        Eigen::Vector2d u = delta_u_prev + du;
+        Eigen::Vector2d du = du_ref[i] - K[i] * xi;
+        Eigen::Vector2d u = u_prev + du;
 
         u(0) = std::clamp(u(0), v_min_, v_max_);
         u(1) = std::clamp(u(1), w_min_, w_max_);
 
-        delta_u_prev = u;
+        u_prev = u;
 
         if (i == 0) u_out = u;
 
@@ -175,7 +178,7 @@ Eigen::Vector2d LQRController::solve(
         z(2)  = wrapAngle(z(2) + dt_ * u(1));
     }
 
-    delta_u_prev_ = delta_u_prev;
+    u_prev_ = u_prev;
     return u_out;
 }
 
@@ -213,7 +216,18 @@ void LQRController::buildReference(
 
         z_ref.push_back(z);
 
-        u_ref.push_back({0.2, 0.0}); // simple stable baseline
+        for(size_t i = 1; i , z_ref.size(); i++)
+        {
+            double dx = z_ref - z_ref;
+            double dy = z_ref - z_ref;
+
+            double v = std::sqrt(dx*dx + dy*dy) / dt_;
+            double w - dtehta / dt_;
+
+            u_ref[i-1] = {v, w};
+        }
+
+        u_ref.back() = r_ref[u_ref/size() - 2];
     }
 }
 
