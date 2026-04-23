@@ -1,0 +1,252 @@
+{
+  "straight_case": [
+    {
+      "name": "baseline_lqr",
+      "pos_mse": 0.07210039495906881,
+      "theta_mse": 0.005206330786067166,
+      "max_pos_err": 1.0500000000022813,
+      "control_energy": 27.08799474688732,
+      "delta_u_energy": 0.3948997641498483,
+      "delta_v_energy": 0.2500226394340721,
+      "delta_w_energy": 0.14487712471577616,
+      "max_dv": 0.50000000000601,
+      "max_dw": 0.2231415343306633
+    },
+    {
+      "name": "smooth_light",
+      "pos_mse": 1.2032397301588404,
+      "theta_mse": 0.003628630389207128,
+      "max_pos_err": 2.0671473975433012,
+      "control_energy": 44.73304015352964,
+      "delta_u_energy": 0.9992555911337588,
+      "delta_v_energy": 0.9181407062250999,
+      "delta_w_energy": 0.08111488490865898,
+      "max_dv": 0.9053519484562923,
+      "max_dw": 0.14602382998966845
+    },
+    {
+      "name": "smooth_medium",
+      "pos_mse": 1.2032397301588404,
+      "theta_mse": 0.003628630389207128,
+      "max_pos_err": 2.0671473975433012,
+      "control_energy": 44.73304015352964,
+      "delta_u_energy": 0.9992555911337588,
+      "delta_v_energy": 0.9181407062250999,
+      "delta_w_energy": 0.08111488490865898,
+      "max_dv": 0.9053519484562923,
+      "max_dw": 0.14602382998966845
+    },
+    {
+      "name": "smooth_heavy",
+      "pos_mse": 1.2032397301588404,
+      "theta_mse": 0.003628630389207128,
+      "max_pos_err": 2.0671473975433012,
+      "control_energy": 44.73304015352964,
+      "delta_u_energy": 0.9992555911337588,
+      "delta_v_energy": 0.9181407062250999,
+      "delta_w_energy": 0.08111488490865898,
+      "max_dv": 0.9053519484562923,
+      "max_dw": 0.14602382998966845
+    }
+  ],
+  "arc_case": [
+    {
+      "name": "baseline_lqr",
+      "pos_mse": 0.04405036865130525,
+      "theta_mse": 0.011593715028937534,
+      "max_pos_err": 0.2618267925386995,
+      "control_energy": 40.13638130173129,
+      "delta_u_energy": 0.3167766154421132,
+      "delta_v_energy": 0.1353917761420736,
+      "delta_w_energy": 0.18138483930003968,
+      "max_dv": 0.16244343268224315,
+      "max_dw": 0.2507448631954772
+    },
+    {
+      "name": "smooth_light",
+      "pos_mse": 2.0504186490103624,
+      "theta_mse": 0.5771321421569443,
+      "max_pos_err": 2.348533234727372,
+      "control_energy": 71.7062095581564,
+      "delta_u_energy": 0.44403217353679586,
+      "delta_v_energy": 0.20938527191179226,
+      "delta_w_energy": 0.23464690162500348,
+      "max_dv": 0.20862893504727703,
+      "max_dw": 0.3043210966088896
+    },
+    {
+      "name": "smooth_medium",
+      "pos_mse": 2.0504186490103624,
+      "theta_mse": 0.5771321421569443,
+      "max_pos_err": 2.348533234727372,
+      "control_energy": 71.7062095581564,
+      "delta_u_energy": 0.44403217353679586,
+      "delta_v_energy": 0.20938527191179226,
+      "delta_w_energy": 0.23464690162500348,
+      "max_dv": 0.20862893504727703,
+      "max_dw": 0.3043210966088896
+    },
+    {
+      "name": "smooth_heavy",
+      "pos_mse": 2.0504186490103624,
+      "theta_mse": 0.5771321421569443,
+      "max_pos_err": 2.348533234727372,
+      "control_energy": 71.7062095581564,
+      "delta_u_energy": 0.44403217353679586,
+      "delta_v_energy": 0.20938527191179226,
+      "delta_w_energy": 0.23464690162500348,
+      "max_dv": 0.20862893504727703,
+      "max_dw": 0.3043210966088896
+    }
+  ],
+  "s_curve_case": [
+    {
+      "name": "baseline_lqr",
+      "pos_mse": 9.114811912292605,
+      "theta_mse": 5.417004826495139,
+      "max_pos_err": 4.715096931944374,
+      "control_energy": 126.48319270783851,
+      "delta_u_energy": 2.992982278776027,
+      "delta_v_energy": 1.512630254870905,
+      "delta_w_energy": 1.4803520239051218,
+      "max_dv": 1.2,
+      "max_dw": 1.1367858355076144
+    },
+    {
+      "name": "smooth_light",
+      "pos_mse": 1.1265311277619774,
+      "theta_mse": 1.1087417810330908,
+      "max_pos_err": 2.0146987966302525,
+      "control_energy": 152.0551520004526,
+      "delta_u_energy": 1.5101954996815397,
+      "delta_v_energy": 0.5709218057617534,
+      "delta_w_energy": 0.9392736939197863,
+      "max_dv": 0.5321938190375702,
+      "max_dw": 0.232269727545184
+    },
+    {
+      "name": "smooth_medium",
+      "pos_mse": 1.1265311277619774,
+      "theta_mse": 1.1087417810330908,
+      "max_pos_err": 2.0146987966302525,
+      "control_energy": 152.0551520004526,
+      "delta_u_energy": 1.5101954996815397,
+      "delta_v_energy": 0.5709218057617534,
+      "delta_w_energy": 0.9392736939197863,
+      "max_dv": 0.5321938190375702,
+      "max_dw": 0.232269727545184
+    },
+    {
+      "name": "smooth_heavy",
+      "pos_mse": 1.1265311277619774,
+      "theta_mse": 1.1087417810330908,
+      "max_pos_err": 2.0146987966302525,
+      "control_energy": 152.0551520004526,
+      "delta_u_energy": 1.5101954996815397,
+      "delta_v_energy": 0.5709218057617534,
+      "delta_w_energy": 0.9392736939197863,
+      "max_dv": 0.5321938190375702,
+      "max_dw": 0.232269727545184
+    }
+  ],
+  "aggressive_curve": [
+    {
+      "name": "baseline_lqr",
+      "pos_mse": 0.0,
+      "theta_mse": 0.0,
+      "max_pos_err": 0.0,
+      "control_energy": 106.00000000000004,
+      "delta_u_energy": 0.0,
+      "delta_v_energy": 0.0,
+      "delta_w_energy": 0.0,
+      "max_dv": 0.0,
+      "max_dw": 0.0
+    },
+    {
+      "name": "smooth_light",
+      "pos_mse": 0.5362361968205492,
+      "theta_mse": 2.0491645301325643,
+      "max_pos_err": 1.0872576409160741,
+      "control_energy": 163.64762573366124,
+      "delta_u_energy": 0.4974035854805781,
+      "delta_v_energy": 0.21546005201732818,
+      "delta_w_energy": 0.2819435334632501,
+      "max_dv": 0.22327880718640492,
+      "max_dw": 0.29999999999999993
+    },
+    {
+      "name": "smooth_medium",
+      "pos_mse": 0.5362361968205492,
+      "theta_mse": 2.0491645301325643,
+      "max_pos_err": 1.0872576409160741,
+      "control_energy": 163.64762573366124,
+      "delta_u_energy": 0.4974035854805781,
+      "delta_v_energy": 0.21546005201732818,
+      "delta_w_energy": 0.2819435334632501,
+      "max_dv": 0.22327880718640492,
+      "max_dw": 0.29999999999999993
+    },
+    {
+      "name": "smooth_heavy",
+      "pos_mse": 0.5362361968205492,
+      "theta_mse": 2.0491645301325643,
+      "max_pos_err": 1.0872576409160741,
+      "control_energy": 163.64762573366124,
+      "delta_u_energy": 0.4974035854805781,
+      "delta_v_energy": 0.21546005201732818,
+      "delta_w_energy": 0.2819435334632501,
+      "max_dv": 0.22327880718640492,
+      "max_dw": 0.29999999999999993
+    }
+  ],
+  "large_offset_s_curve": [
+    {
+      "name": "baseline_lqr",
+      "pos_mse": 0.16646186378544525,
+      "theta_mse": 0.07049541493110896,
+      "max_pos_err": 0.6000967228337286,
+      "control_energy": 58.992276300515684,
+      "delta_u_energy": 1.0985451929869303,
+      "delta_v_energy": 0.12417325213860295,
+      "delta_w_energy": 0.9743719408483273,
+      "max_dv": 0.18803747686767325,
+      "max_dw": 0.4477754450439657
+    },
+    {
+      "name": "smooth_light",
+      "pos_mse": 3.1250024636978178,
+      "theta_mse": 0.21438295679189925,
+      "max_pos_err": 2.80130628745996,
+      "control_energy": 98.34099195506786,
+      "delta_u_energy": 2.1697710479663654,
+      "delta_v_energy": 0.20469621806620888,
+      "delta_w_energy": 1.9650748299001564,
+      "max_dv": 0.22801963897778044,
+      "max_dw": 0.4771448631956696
+    },
+    {
+      "name": "smooth_medium",
+      "pos_mse": 3.1250024636978178,
+      "theta_mse": 0.21438295679189925,
+      "max_pos_err": 2.80130628745996,
+      "control_energy": 98.34099195506786,
+      "delta_u_energy": 2.1697710479663654,
+      "delta_v_energy": 0.20469621806620888,
+      "delta_w_energy": 1.9650748299001564,
+      "max_dv": 0.22801963897778044,
+      "max_dw": 0.4771448631956696
+    },
+    {
+      "name": "smooth_heavy",
+      "pos_mse": 3.1250024636978178,
+      "theta_mse": 0.21438295679189925,
+      "max_pos_err": 2.80130628745996,
+      "control_energy": 98.34099195506786,
+      "delta_u_energy": 2.1697710479663654,
+      "delta_v_energy": 0.20469621806620888,
+      "delta_w_energy": 1.9650748299001564,
+      "max_dv": 0.22801963897778044,
+      "max_dw": 0.4771448631956696
+    }
+  ]
+}

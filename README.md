@@ -1,80 +1,159 @@
-# ROS2 Workspace
-Workspace for `CMPT720` running **ROS2 Humble**
-- Fork of https://github.com/athackst/vscode_ros2_workspace/tree/humble
+# LQR and Augmented-State LQR Smoothing for Mobile Robot Trajectory Tracking
 
-In this course, we use Docker together with VS Code Dev Containers to provide a consistent and reliable development environment for ROS 2.
-Robotics software is particularly sensitive to differences in system configuration, and this approach helps us avoid many common issues.
+This repository contains the implementation of an augmented state LQR
+smoothing controller for mobile robot trajectory tracking, evaluated on a
+TurtleBot3 Burger in Gazebo simulation.
 
-## Dev Container Setup
-1. Make sure Docker, VS Code, and VS Code Remote Containers extension are installed. See [Docker Setup](#docker-setup)
-2. Clone this the `cmpt720_sp26` branch of this repo
+The smoothing controller augments the robot state with the previously applied
+control input and solves for the control increment $\Delta u_k$ directly. A
+penalty matrix $S$ on $\Delta u_k$ is embedded into the Riccati recursion,
+producing smoother velocity commands without altering the standard LQR pipeline.
+Setting $S = 0$ recovers the baseline LQR formulation.
+
+We compare the baseline LQR controller and the augmented smoothing controller
+across two trajectory types: a point-to-point task and a figure-8 trajectory.
+On the figure-8, the smoothing controller reduces peak angular jerk by up to
+74% and average angular jerk by 59% with negligible cost to tracking accuracy.
+
+## Authors
+
+Nick Smart, Morgan Hindy, Hershey Batore
+
+
+## Setup
+
+The repository is tested on Ubuntu 22.04 with ROS2 Humble. We recommend running
+inside the provided dev container.
+
+### Dependencies
+
+- ROS2 Humble
+- Gazebo Classic 11
+- TurtleBot3 simulation packages: `turtlebot3_gazebo`, `turtlebot3_msgs`
+- Python 3.10+ with `numpy`, `matplotlib`
+- Custom message package: `nav_helpers_msgs` (included)
+
+### Build
+
+Clone the repository into your workspace and build with `colcon`:
 
 ```bash
-git clone -b cmpt720_sp26 git@github.com:SFU-MARS/ros2_ws.git
+git clone https://github.com/your-org/lqr-smoothing-controller.git
+cd lqr-smoothing-controller
+colcon build --packages-select controller --symlink-install
+source install/setup.bash
 ```
 
-2. See [these instructions](https://github.com/SFU-MARS/ros2_tutorial/wiki/Building-and-using-the-dev-container)
+Set the TurtleBot3 model:
 
-3. See [this article](https://www.allisonthackston.com/articles/vscode-docker-ros2.html) for deeper insight
-
-## Docker Setup
-Before proceeding, ensure the following are installed on your system:
-* [Docker](https://docs.docker.com/engine/install/)
-* [Visual Studio Code](https://code.visualstudio.com/)
-* [VS Code Remote Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
-
-
-### Docker Post-Installation (Linux)
-
-To run Docker without sudo and allow VS Code to connect to containers, follow the official Docker post-installation steps:
-
-https://docs.docker.com/engine/install/linux-postinstall/
-
-Summary:
 ```bash
-sudo groupadd docker
-sudo usermod -aG docker $USER
-newgrp docker
+export TURTLEBOT3_MODEL=burger
 ```
 
-## To run Gazebo GUI on Windows (Docker)
+## Running the Experiments
 
-This workspace supports running the Gazebo GUI on **Windows 11/10 with WSLg** using Docker Desktop and VS Code Dev Containers.
+Each experiment requires three terminals: one for Gazebo, one for the controller
+node, and one for the trajectory publisher (figure-8 only).
 
-### Requirements
-- make sure the Windows come with **WSL2 + WSLg enabled**
-  * Verify WSLg is working by running this in your WSL terminal (not from the container):
-    ```bash
-    glxinfo | grep OpenGL
-    ```
-    - this should give you OpenGL vendor and render info. Otherwise, you should first enable WSLg following this: https://github.com/microsoft/wslg
-- **Docker Desktop** (WSL backend)
-- **VS Code** with **Dev Containers** extension
+### Experiment 1 — Point-to-Point
 
-### Steps
-1. Make sure we are using the right devcontainer config file:
-   ```sh
-   mv .devcontainer/devcontainer.json .devcontainer/devcontainer.json.bk  # backup
-   mv .devcontainer/wsl-devcontainer.json .devcontainer/devcontainer.json
-   ```
-2. Open this workspace in VS Code
-3. Rebuild container: press `F1` → **Dev Containers: Reopen in Container**
-4. Wait for the container to build and attach
-5. Inside the container terminal, launch Gazebo:
-   ```bash
-   gazebo  --verbose
-   ```
+The robot starts at $(-4.0, 3.5)$ and navigates to a goal at $(-2.0, -4.0)$.
 
-### Notes
+```bash
+# Terminal 1 — Gazebo
+ros2 launch mpc sim_env.launch.py
 
-* GUI support is enabled via WSLg socket mounting points and environment variables defined in `mounts` and `containerEnv`:
+# Terminal 2 — Controller (swap YAML for each smoothing setting)
+ros2 launch controller controller_ref_test.launch.py \
+  controller_params:=src/controller/params/lqr_exp1_baseline.yaml \
+  pose_params:=src/mpc/params/pose_publish.yaml
+```
 
-  ```
-  .devcontainer/wsl-devcontainer.json
-  ```
+After each run, save the CSV log:
 
-* This configuration forces **software OpenGL rendering**, if Gazebo opens but shows a black window or renders slowly:
+```bash
+cp results/metrics/current_run.csv results/metrics/exp1_baseline.csv
+```
 
-  ```json
-  "LIBGL_ALWAYS_SOFTWARE": "1"
-  ```
+### Experiment 2 — Figure-8
+
+The robot starts at $(-4.0, 3.5)$, drives to the crossing point $(0, 0)$, and
+executes two figure-8 lobes of radius $r = 1.2\,\mathrm{m}$ at $v = 0.5\,\mathrm{m/s}$.
+
+```bash
+# Terminal 1 — Gazebo
+ros2 launch mpc sim_env.launch.py
+
+# Terminal 2 — Controller
+ros2 launch controller controller_ref_test.launch.py \
+  controller_params:=src/controller/params/lqr_exp_fig8_baseline.yaml \
+  pose_params:=src/mpc/params/pose_publish.yaml
+
+# Terminal 3 — Figure-8 reference publisher
+ros2 run controller figure8_publisher \
+  --ros-args --params-file src/controller/params/lqr_exp_fig8_baseline.yaml
+```
+
+After each run, save the CSV log:
+
+```bash
+cp results/metrics/current_run.csv results/metrics/fig8_baseline.csv
+```
+
+The seven smoothing settings used are: $(0,0)$, $(0.5,1)$, $(1,2)$, $(3,5)$,
+$(10,20)$, $(30,60)$, $(50,100)$ for $(s_v, s_\omega)$.
+
+## Analysis
+
+Generate all plots from the logged CSV files:
+
+```bash
+python3 analysis/exp1_generate_plots.py
+python3 analysis/exp2_generate_plots.py
+```
+
+Outputs land in `exp1_plots/` and `exp2_plots/`.
+
+
+## Key Files
+
+| File | Purpose |
+|---|---|
+| `lqr_algorithm.py` | Baseline finite-horizon LQR with backward Riccati recursion |
+| `lqr_smoothing_augmented.py` | Augmented-state LQR; setting `du_v_cost = du_w_cost = 0` recovers baseline |
+| `controller_node.py` | ROS2 frontend; subscribes to `/robot_pose` and `/traj`, publishes `/cmd_vel` |
+| `figure8_publisher.py` | Pre-computes the figure-8 reference and broadcasts it on `/traj` |
+
+## Results Summary
+
+### Figure-8 (primary result)
+
+| Run | RMS $\Delta\omega$ | Max $\Delta\omega$ | TV $\omega$ | Path (m) |
+|---|---|---|---|---|
+| Baseline (0,0) | 0.0630 | 1.515 | 21.61 | 29.06 |
+| Light (0.5,1) | 0.0478 | 1.006 | 15.59 | 29.22 |
+| Medium (1,2) | 0.0430 | 0.803 | 14.95 | 29.22 |
+| Medium2 (3,5) | 0.0340 | 0.611 | 11.03 | 29.13 |
+| Heavy (10,20) | 0.0259 | 0.400 | 8.94 | 29.56 |
+| XHeavy (30,60) | 0.0195 | 0.332 | 6.39 | 29.36 |
+| XXHeavy (50,100) | 0.0174 | 0.333 | 5.65 | 29.84 |
+
+All seven smoothness metrics decrease monotonically with $\lambda$. Path length
+varies by less than $0.8\,\mathrm{m}$ over $\sim 29.5\,\mathrm{m}$, indicating
+negligible tracking cost. Diminishing returns emerge above $\lambda = 20$, identifying
+Heavy $(10, 20)$ as the recommended operating point for this robot and trajectory.
+
+## Acknowledgements
+
+This project builds on starter code from Assignment 3 of CMPT 720 (Spring 2026)
+at Simon Fraser University, taught by Prof. Mo Chen. The original assignment
+provided the ROS2 frontend scaffolding (`controller_node.py`), the Dubins car
+dynamics module (`dubins3d_2ctrls.py`), the reference trajectory generator,
+and the baseline `LQRController` structure that we extended with the
+augmented-state smoothing controller (`lqr_smoothing_augmented.py`) for this
+project.
+
+The augmented LQR formulation follows the lecture notes of P. Abbeel
+(UC Berkeley CS 287) and the textbook treatment in Anderson and Moore,
+*Optimal Control: Linear Quadratic Methods* (Prentice-Hall, 1990). Built on
+top of the TurtleBot3 simulation stack and ROS2 Humble.
