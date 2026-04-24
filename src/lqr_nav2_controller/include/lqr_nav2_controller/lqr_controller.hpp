@@ -5,12 +5,12 @@
 #include <nav_msgs/msg/path.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
-
 #include <tf2_ros/buffer.h>
 #include <nav2_costmap_2d/costmap_2d_ros.hpp>
-
 #include <Eigen/Dense>
 #include <vector>
+#include <string>
+#include <cmath>
 
 namespace lqr_nav2_controller
 {
@@ -27,72 +27,76 @@ public:
         std::shared_ptr<tf2_ros::Buffer> tf,
         std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros) override;
 
-    void cleanup() override;
-    void activate() override;
+    void cleanup()    override;
+    void activate()   override;
     void deactivate() override;
 
     void setPlan(const nav_msgs::msg::Path & path) override;
 
     geometry_msgs::msg::TwistStamped computeVelocityCommands(
         const geometry_msgs::msg::PoseStamped & pose,
-        const geometry_msgs::msg::Twist & velocity,
+        const geometry_msgs::msg::Twist       & velocity,
         nav2_core::GoalChecker * goal_checker) override;
 
     void setSpeedLimit(const double & speed_limit, const bool & percentage) override;
 
 private:
-    // dynamics
     void linearize(
-        const Eigen::Vector3d & z,
-        const Eigen::Vector2d & u,
-        double dt,
-        Eigen::Matrix3d & A,
+        const Eigen::Vector3d     & z,
+        const Eigen::Vector2d     & u,
+        double                      dt,
+        Eigen::Matrix3d           & A,
         Eigen::Matrix<double,3,2> & B) const;
 
+    void buildAugmentedDynamics(
+        const std::vector<Eigen::Matrix3d>           & As,
+        const std::vector<Eigen::Matrix<double,3,2>> & Bs,
+        std::vector<Eigen::Matrix<double,5,5>>       & A_aug,
+        std::vector<Eigen::Matrix<double,5,2>>       & B_aug) const;
+
     std::vector<Eigen::Matrix<double,2,5>> computeGains(
-        const std::vector<Eigen::Matrix3d> & A,
-        const std::vector<Eigen::Matrix<double,3,2>> & B) const;
+        const std::vector<Eigen::Matrix<double,5,5>> & A_aug,
+        const std::vector<Eigen::Matrix<double,5,2>> & B_aug) const;
 
     Eigen::Vector2d solve(
-        const Eigen::Vector3d & z0,
+        const Eigen::Vector3d              & z0,
         const std::vector<Eigen::Vector3d> & z_ref,
-        const std::vector<Eigen::Vector2d> & u_ref);
+        const std::vector<Eigen::Vector2d> & u_ref,
+        const Eigen::Vector2d              & u_prev_ref_0);
 
     void buildReference(
-        const nav_msgs::msg::Path & path,
-        const Eigen::Vector3d & z0,
+        const nav_msgs::msg::Path    & path,
+        const Eigen::Vector3d        & z0,
         std::vector<Eigen::Vector3d> & z_ref,
-        std::vector<Eigen::Vector2d> & u_ref) const;
+        std::vector<Eigen::Vector2d> & u_ref,
+        Eigen::Vector2d              & u_prev_ref_0) const;
 
     double wrapAngle(double a) const
     {
         return std::atan2(std::sin(a), std::cos(a));
     }
 
-private:
+    // path
     nav_msgs::msg::Path path_;
 
-    double dt_{0.1};
-    int horizon_{25};
+    // controller state
+    Eigen::Vector2d u_prev_{Eigen::Vector2d::Zero()};
 
-    double v_min_{0.0}, v_max_{0.5};
-    double w_min_{-1.2}, w_max_{1.2};
+    // parameters
+    double dt_     {0.1};
+    int    horizon_ {25};
+    double v_min_ {-0.2};
+    double v_max_  {1.0};
+    double w_min_ {-1.2};
+    double w_max_  {1.2};
 
-    double max_linear_vel_{0.5};
-    double max_angular_vel_{1.0};
-
-    // ===== Method A matrices =====
-    Eigen::Matrix3d Qz_;     // state cost (x,y,theta)
-    Eigen::Matrix3d Lz_;     // terminal cost
-
-    Eigen::Matrix2d Ru_;     // control cost (v,w)
-    Eigen::Matrix2d Rdu_;    // delta control cost
-
-    // augmented cost (5x5)
-    Eigen::Matrix<double,5,5> Q_aug_;
-    Eigen::Matrix<double,5,5> L_aug_;
-
-    Eigen::Vector2d delta_u_prev_{0.0, 0.0};
+    // cost matrices
+    Eigen::Matrix3d           Qz_;    // 3x3 state stage cost
+    Eigen::Matrix3d           Lz_;    // 3x3 state terminal cost
+    Eigen::Matrix2d           Ru_;    // 2x2 absolute-velocity cost
+    Eigen::Matrix2d           Rdu_;   // 2x2 control-rate cost
+    Eigen::Matrix<double,5,5> Q_aug_; // 5x5 augmented stage cost
+    Eigen::Matrix<double,5,5> L_aug_; // 5x5 augmented terminal cost
 };
 
 } // namespace lqr_nav2_controller
