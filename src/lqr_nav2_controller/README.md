@@ -2,6 +2,10 @@
 
 A finite-horizon **Linear Quadratic Regulator (LQR)** controller plugin for [Nav2](https://nav2.ros.org/), targeting ROS 2. The controller tracks a global path by solving a time-varying LQR problem over a receding horizon, linearising the unicycle model at each reference point.
 
+
+
+
+
 ---
 
 ## ⚠️ Important: This is a Nav2 plugin, not a full navigation stack
@@ -124,4 +128,5 @@ controller_server:
 ```
 ---
 
-## License
+## Reference(s)
+https://github.com/ros-navigation/navigation2/tree/humble/nav2_core
