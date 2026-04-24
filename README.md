@@ -191,7 +191,7 @@ Without the above components, the controller will fail with errors such as:
 
 ---
 
-## Repository layout
+## Repository layout (in src folder)
 
 ```
 lqr_nav2_controller/
