@@ -156,7 +156,7 @@ A finite-horizon **Linear Quadratic Regulator (LQR)** controller plugin for [Nav
 
 ---
 
-## ⚠️ Important: This is a Nav2 plugin, not a full navigation stack
+## Important: This is a Nav2 plugin, not a full navigation stack
 
 This repository only provides a **Nav2 Controller plugin (LQRController)**.
 
@@ -175,8 +175,6 @@ To run this plugin, you still need a working Nav2 setup providing:
 - `bt_navigator`
 - `behavior_server`
 - `waypoint_follower` (optional)
-
-### Why this matters
 
 This package only defines **how the robot computes velocity commands (LQR control)**.
 
