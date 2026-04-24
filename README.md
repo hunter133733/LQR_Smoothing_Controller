@@ -90,8 +90,7 @@ ros2 launch controller controller_ref_test.launch.py \
   pose_params:=src/mpc/params/pose_publish.yaml
 
 # Terminal 3 — Figure-8 reference publisher
-ros2 run controller figure8_publisher \
-  --ros-args --params-file src/controller/params/lqr_exp_fig8_baseline.yaml
+ros2 run controller figure8_publisher
 ```
 
 After each run, save the CSV log:
