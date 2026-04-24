@@ -145,6 +145,11 @@ Heavy $(10, 20)$ as the recommended operating point for this robot and trajector
 
 [Experiment 2 simulation video (heavy smoothing)](https://youtu.be/JJyEba6f718 "Tooltip text")
 
+## Poster
+
+<img width="10800" height="7200" alt="Poster" src="https://github.com/user-attachments/assets/b6503b5f-7e44-4256-94c9-73ed7822a52c" />
+
+
 # lqr_nav2_controller
 
 A finite-horizon **Linear Quadratic Regulator (LQR)** controller plugin for [Nav2](https://nav2.ros.org/), targeting ROS 2. The controller tracks a global path by solving a time-varying LQR problem over a receding horizon, linearising the unicycle model at each reference point.
