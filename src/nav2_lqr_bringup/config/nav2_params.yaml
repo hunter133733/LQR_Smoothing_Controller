@@ -124,7 +124,7 @@ controller_server:
       stateful: true
 
     FollowPath:
-      plugin: "lqr_nav2_controller/LQRController"
+      plugin: "lqr_nav2_controller::LQRController"
 
       # Timestep must match controller_frequency above (1/10 = 0.1)
       dt:          0.1
