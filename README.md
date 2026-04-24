@@ -8,7 +8,6 @@ The smoothing controller augments the robot state with the previously applied
 control input and solves for the control increment $\Delta u_k$ directly. A
 penalty matrix $S$ on $\Delta u_k$ is embedded into the Riccati recursion,
 producing smoother velocity commands without altering the standard LQR pipeline.
-Setting $S = 0$ recovers the baseline LQR formulation.
 
 We compare the baseline LQR controller and the augmented smoothing controller
 across two trajectory types: a point-to-point task and a figure-8 trajectory.
@@ -17,7 +16,7 @@ On the figure-8, the smoothing controller reduces peak angular jerk by up to
 
 ## Authors
 
-Nick Smart, Morgan Hindy, Hershey Batore
+Nicholas Smart, Morgan Hindy, Hershey Batore
 
 
 ## Setup
