@@ -40,9 +40,8 @@ ament_target_dependencies(lqr_nav2_controller
   nav2_costmap_2d
 )
 
-pluginlib_export_plugin_description_file(nav2_core lqr_nav2_controller_plugins.xml)
 install(
-  FILES lqr_nav2_controller_plugins.xml
+  FILES plugin.xml
   DESTINATION share/${PROJECT_NAME}
 )
 install(TARGETS lqr_nav2_controller
@@ -51,16 +50,10 @@ install(TARGETS lqr_nav2_controller
 install(DIRECTORY include/
   DESTINATION include
 )
-install(DIRECTORY
-  launch config
-  DESTINATION share/${PROJECT_NAME}
-)
 
 ament_export_dependencies(pluginlib nav2_core)
 ament_export_libraries(lqr_nav2_controller)
-
 ament_export_include_directories(include)
-ament_export_libraries(lqr_nav2_controller)
 ament_export_dependencies(
   rclcpp
   pluginlib

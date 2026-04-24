@@ -23,6 +23,6 @@
 
   <export>
     <build_type>ament_cmake</build_type>
-    <nav2_core plugin="${prefix}/lqr_nav2_controller_plugins.xml"/>
+    <pluginlib plugin="${prefix}/share/lqr_nav2_controller/plugin.xml"/>
   </export>
 </package>

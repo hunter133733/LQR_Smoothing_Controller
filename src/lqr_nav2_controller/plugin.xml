@@ -2,6 +2,6 @@
   <class name="lqr_nav2_controller::LQRController"
          type="lqr_nav2_controller::LQRController"
          base_class_type="nav2_core::Controller">
-    <description>LQR Smoothing Controller plugin for Nav2</description>
+    <description>LQR Controller plugin</description>
   </class>
 </library>
