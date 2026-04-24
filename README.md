@@ -142,6 +142,8 @@ varies by less than $0.8\,\mathrm{m}$ over $\sim 29.5\,\mathrm{m}$, indicating
 negligible tracking cost. Diminishing returns emerge above $\lambda = 20$, identifying
 Heavy $(10, 20)$ as the recommended operating point for this robot and trajectory.
 
+[Experiment 2 simulation video (baseline)](https://youtu.be/2FqARFr0m7Q "Tooltip text")
+[Experiment 2 simulation video (heavy smoothing)](https://youtu.be/JJyEba6f718 "Tooltip text")
 ## Acknowledgements
 
 This project builds on starter code from Assignment 3 of CMPT 720 (Spring 2026)
