@@ -143,6 +143,7 @@ negligible tracking cost. Diminishing returns emerge above $\lambda = 20$, ident
 Heavy $(10, 20)$ as the recommended operating point for this robot and trajectory.
 
 [Experiment 2 simulation video (baseline)](https://youtu.be/2FqARFr0m7Q "Tooltip text")
+
 [Experiment 2 simulation video (heavy smoothing)](https://youtu.be/JJyEba6f718 "Tooltip text")
 ## Acknowledgements
 
